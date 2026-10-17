@@ -27,7 +27,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -703,16 +703,29 @@ class Api:
                 pass
             return {"error": f"Update failed: {e}"}
 
-        # A one-file PyInstaller exe runs as two processes (bootloader + app); both lock the file.
-        pids = [os.getpid(), os.getppid()]
-        script = os.path.join(os.environ.get("TEMP", CONFIG_DIR), "osrs-wiki-reader-update.cmd")
-        waits = "\n".join(f':wait{i}\ntasklist /FI "PID eq {p}" 2>nul | find "{p}" >nul && (timeout /t 1 /nobreak >nul & goto wait{i})'
-                          for i, p in enumerate(pids))
+        # A one-file PyInstaller exe runs as two processes (bootloader + app); both lock the file, so wait
+        # for both to exit, then swap the files and restart. `ping` is the sleep: `timeout` needs a console.
+        temp = os.environ.get("TEMP", CONFIG_DIR)
+        script = os.path.join(temp, "osrs-wiki-reader-update.cmd")
+        log = os.path.join(temp, "osrs-wiki-reader-update.log")
+        sleep = "ping -n 2 127.0.0.1 >nul"
+        lines = ["@echo off", f'echo %date% %time% updating to {up["version"]}> "{log}"', "set tries=0"]
+        for i, pid in enumerate([os.getpid(), os.getppid()]):
+            lines += [f":wait{i}", f'tasklist /NH /FI "PID eq {pid}" 2>nul | find " {pid} " >nul || goto waited{i}',
+                      "set /a tries+=1", f"if %tries% lss 60 ({sleep} & goto wait{i})", f":waited{i}"]
+        lines += [f'echo %time% app closed>> "{log}"', "set tries=0", ":move",
+                  f'move /y "{new}" "{exe}" >nul 2>&1 && goto moved', "set /a tries+=1",
+                  f'if %tries% lss 30 ({sleep} & goto move)', f'echo %time% could not replace the exe>> "{log}"', "goto start",
+                  ":moved", f'echo %time% replaced>> "{log}"', ":start", f'start "" "{exe}"', f'echo %time% restarted>> "{log}"',
+                  'del "%~f0"']
         with open(script, "w", encoding="mbcs") as f:
-            f.write(f'@echo off\n{waits}\nset tries=0\n:move\nmove /y "{new}" "{exe}" >nul 2>&1 && goto done\n'
-                    f'set /a tries+=1\nif %tries% lss 30 (timeout /t 1 /nobreak >nul & goto move)\n'
-                    f':done\nstart "" "{exe}"\ndel "%~f0"\n')
-        subprocess.Popen(["cmd", "/c", script], creationflags=0x08000000 | 0x00000008, close_fds=True)  # no window, detached
+            f.write("\r\n".join(lines) + "\r\n")
+        # Don't leak this process's PyInstaller variables into the restarted exe, or it will think it's our
+        # child process and look for its files in our (by then deleted) temp folder.
+        env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("_PYI_", "_MEIPASS"))}
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        subprocess.Popen(["cmd", "/c", script], creationflags=0x08000000 | 0x00000008, close_fds=True,  # no window, detached
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
         threading.Timer(0.5, self._window.destroy).start()
         return {"ok": True}
 
