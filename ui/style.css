@@ -246,4 +246,15 @@ body.mini .suggest { max-height: 300px; overflow: auto; }
 select { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; outline: none; }
 select:focus { border-color: var(--accent); }
 .note { margin: 0 8px 6px; font-size: 12px; color: var(--danger); }
+.note.hint { color: var(--text-dim); }
+.hk { display: flex; align-items: center; gap: 4px; }
+.hk-key { white-space: nowrap; }
+.hk-key {
+  min-width: 110px; height: 28px; padding: 0 10px; font: 600 12px "Segoe UI", sans-serif;
+  background: var(--bg); border: 1px solid var(--border-strong); border-radius: 7px; color: var(--text);
+}
+.hk-key:hover { border-color: var(--accent); }
+.hk-key.rec { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.hk-clear { width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font-size: 16px; line-height: 1; }
+.hk-clear:hover { background: var(--surface-3); color: var(--danger); }
 .about { margin: 8px 8px 4px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }

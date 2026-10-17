@@ -9,7 +9,7 @@ A small, fast desktop window for the [Old School RuneScape Wiki](https://oldscho
 ## What it does
 
 - **Wiki reader**: clean dark or parchment theme, search with autocomplete, find on page (Ctrl+F), bookmarks, history.
-- **Show/hide hotkey** (Ctrl+Alt+W by default), a **pin** to keep it above the game, and a **mini mode** search strip.
+- **Show/hide hotkey** you can set to any combination (Ctrl+Alt+W by default), a **pin** to keep it above the game, and a **mini mode** search strip.
 - **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side.
 - **Requirement checks**: set your account and quest, diary and guide pages tick off what you meet. The Character tab lists quests you can start now.
 - **Grand Exchange**: live prices and a price chart on item pages, a watchlist, and price alerts as Windows notifications.

@@ -141,8 +141,10 @@
     <div class="row"><span>Text size</span>
       <div class="stepper"><button id="zoomOut">−</button><output id="zoomVal">100%</output><button id="zoomIn">+</button></div>
     </div>
-    <div class="row"><span>Show / hide hotkey</span><select id="hotkeySel"></select></div>
-    <p class="note" id="hotkeyNote" hidden>That hotkey is already used by another app. Pick a different one.</p>
+    <div class="row"><span>Show / hide hotkey</span>
+      <div class="hk"><button class="hk-key" id="hkKey" title="Click, then press the keys you want"></button><button class="hk-clear" id="hkClear" title="Turn the hotkey off">×</button></div>
+    </div>
+    <p class="note" id="hotkeyNote" hidden></p>
     <div class="row"><span>Recent pages</span><button class="btn small" id="btnClearRecent">Clear</button></div>
     <div class="row"><span>Updates <span class="dim" id="updStatus"></span></span><button class="btn small" id="btnCheckUpdate">Check now</button></div>
     <p class="about">OSRS Wiki Reader <span id="ver"></span><br>Content from the <a href="https://oldschool.runescape.wiki" data-ext>Old School RuneScape Wiki</a> (CC BY-NC-SA 3.0). Unofficial, not affiliated with Jagex or the Wiki.</p>

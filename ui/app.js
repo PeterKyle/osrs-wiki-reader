@@ -39,7 +39,7 @@ window.addEventListener('pywebviewready', async () => {
   applyZoom(state.zoom);
   els.pin.classList.toggle('on', state.pinned);
   $('ver').textContent = 'v' + state.version;
-  buildHotkeySelect();
+  renderHotkey();
   renderHome();
   goHome(true);
   focusSearch();
@@ -520,15 +520,95 @@ $('btnClearRecent').onclick = async () => {
   renderRecent();
 };
 
-function buildHotkeySelect() {
-  const sel = $('hotkeySel');
-  sel.innerHTML = state.hotkeys.map((h) => `<option${h === state.hotkey ? ' selected' : ''}>${h}</option>`).join('');
-  $('hotkeyNote').hidden = state.hotkeyOk || state.hotkey === 'Off';
-  sel.onchange = async () => {
-    state = await api.set_pref('hotkey', sel.value);
-    $('hotkeyNote').hidden = state.hotkeyOk || state.hotkey === 'Off';
+/* ---------------- custom show/hide hotkey ---------------- */
+
+// KeyboardEvent.code -> [Windows virtual-key code, label, usable without Ctrl/Alt/Win?]
+function keyInfo(code) {
+  let m;
+  if ((m = code.match(/^Key([A-Z])$/))) return [m[1].charCodeAt(0), m[1], false];
+  if ((m = code.match(/^Digit(\d)$/))) return [0x30 + +m[1], m[1], false];
+  if ((m = code.match(/^F(\d{1,2})$/)) && +m[1] >= 1 && +m[1] <= 24) return [0x6F + +m[1], code, true];
+  if ((m = code.match(/^Numpad(\d)$/))) return [0x60 + +m[1], 'Num ' + m[1], false];
+  const named = {
+    Space: [0x20, 'Space'], Backquote: [0xC0, '`'], Minus: [0xBD, '-'], Equal: [0xBB, '='], BracketLeft: [0xDB, '['],
+    BracketRight: [0xDD, ']'], Backslash: [0xDC, '\\'], Semicolon: [0xBA, ';'], Quote: [0xDE, "'"], Comma: [0xBC, ','],
+    Period: [0xBE, '.'], Slash: [0xBF, '/'], Tab: [0x09, 'Tab'], Enter: [0x0D, 'Enter'], Backspace: [0x08, 'Backspace'],
+    Insert: [0x2D, 'Insert', true], Delete: [0x2E, 'Delete'], Home: [0x24, 'Home'], End: [0x23, 'End'],
+    PageUp: [0x21, 'Page Up'], PageDown: [0x22, 'Page Down'], ArrowUp: [0x26, 'Up'], ArrowDown: [0x28, 'Down'],
+    ArrowLeft: [0x25, 'Left'], ArrowRight: [0x27, 'Right'], Pause: [0x13, 'Pause', true], ScrollLock: [0x91, 'Scroll Lock', true],
+    NumpadMultiply: [0x6A, 'Num *'], NumpadAdd: [0x6B, 'Num +'], NumpadSubtract: [0x6D, 'Num -'],
+    NumpadDecimal: [0x6E, 'Num .'], NumpadDivide: [0x6F, 'Num /'],
   };
+  return named[code] ? [named[code][0], named[code][1], !!named[code][2]] : null;
 }
+
+const hk = { btn: $('hkKey'), note: $('hotkeyNote'), recording: false };
+
+function hkNote(text) {
+  hk.note.classList.remove('hint');
+  hk.note.textContent = text || '';
+  hk.note.hidden = !text;
+}
+
+function renderHotkey() {
+  hk.btn.classList.remove('rec');
+  hk.btn.textContent = state.hotkey === 'Off' ? 'Off (click to set)' : state.hotkey.replace(/\+/g, ' + ');
+  $('hkClear').hidden = state.hotkey === 'Off';
+  if (state.hotkey !== 'Off' && !state.hotkeyOk) hkNote(`${state.hotkey} is already used by another app. Click it to pick a different one.`);
+}
+
+async function startRecording() {
+  hk.recording = true;
+  hk.btn.classList.add('rec');
+  hk.btn.textContent = 'Press keys…';
+  hkNote('');
+  hk.note.hidden = false;
+  hk.note.classList.add('hint');
+  hk.note.textContent = 'Press the combination you want, e.g. Ctrl + Shift + Q or F9. Esc cancels.';
+  await api.pause_hotkey(true);   // so pressing the current hotkey doesn't hide the window
+}
+
+async function stopRecording() {
+  if (!hk.recording) return;
+  hk.recording = false;
+  await api.pause_hotkey(false);   // re-registers the saved hotkey
+  if (hk.note.classList.contains('hint')) hkNote('');
+  renderHotkey();
+}
+
+window.addEventListener('keydown', async (e) => {
+  if (!hk.recording) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (e.repeat) return;
+  const mods = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.shiftKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+  const names = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean);
+  if (e.key === 'Escape' && !mods) { stopRecording(); return; }
+  if (['Control', 'Alt', 'Shift', 'Meta', 'OS'].includes(e.key)) {
+    hk.btn.textContent = names.join(' + ') + ' + …';
+    return;
+  }
+  const info = keyInfo(e.code);
+  if (!info) { hkNote("That key can't be used for a hotkey. Try a letter, number or F-key."); return; }
+  const [vk, keyName, alone] = info;
+  if (!alone && !(mods & (1 | 2 | 8))) {
+    hkNote('Hold Ctrl, Alt or Win as well, so the hotkey doesn’t get in the way of typing. F-keys work on their own.');
+    return;
+  }
+  hk.recording = false;
+  state = await api.set_hotkey([...names, keyName].join('+'), mods, vk);   // re-registers (also ends the pause)
+  renderHotkey();
+  if (state.error) hkNote(state.error);
+  else toast(`Hotkey set to ${state.hotkey.replace(/\+/g, ' + ')}`);
+}, true);
+
+hk.btn.onclick = () => (hk.recording ? stopRecording() : startRecording());
+hk.btn.onblur = () => stopRecording();
+$('hkClear').onclick = async () => {
+  state = await api.clear_hotkey();
+  hkNote('');
+  renderHotkey();
+};
 
 /* ---------------- find on page (Ctrl+F) ---------------- */
 

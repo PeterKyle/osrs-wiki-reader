@@ -27,7 +27,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -62,7 +62,8 @@ QUEST_NAME_FIXES = {
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "settings.json")
 
-HOTKEYS = {  # label -> (modifiers, virtual key)
+# Presets from older versions' settings: label -> (modifiers, virtual key). New hotkeys store "hotkey_spec".
+HOTKEYS = {
     "Ctrl+Alt+W": (0x0001 | 0x0002, 0x57),
     "Ctrl+Shift+Space": (0x0002 | 0x0004, 0x20),
     "Alt+`": (0x0001, 0xC0),
@@ -74,7 +75,8 @@ DEFAULTS = {
     "pinned": False,
     "theme": "dark",
     "zoom": 100,
-    "hotkey": "Ctrl+Alt+W",
+    "hotkey": "Ctrl+Alt+W",  # display label, or "Off"
+    "hotkey_spec": None,     # [modifiers, virtual key]; None = look the label up in HOTKEYS
     "recent": [],
     "accounts": [],  # saved RSNs
     "me": None,      # the RSN used for quest requirement checks
@@ -210,6 +212,7 @@ class Api:
         self._pool = ThreadPoolExecutor(max_workers=3)
         self._hotkey_thread_id = None
         self._hotkey_ok = False
+        self._hk_done = threading.Event()
 
     # ---- wiki ----
     def search(self, query):
@@ -749,7 +752,6 @@ class Api:
             "zoom": self._cfg["zoom"],
             "hotkey": self._cfg["hotkey"],
             "hotkeyOk": self._hotkey_ok,
-            "hotkeys": list(HOTKEYS),
             "recent": self._cfg["recent"],
             "accounts": self._cfg["accounts"],
             "me": self._cfg["me"],
@@ -765,11 +767,6 @@ class Api:
             self._cfg["theme"] = value
         elif key == "zoom":
             self._cfg["zoom"] = max(70, min(160, int(value)))
-        elif key == "hotkey" and value in HOTKEYS:
-            self._cfg["hotkey"] = value
-            if self._hotkey_thread_id:
-                user32.PostThreadMessageW(self._hotkey_thread_id, 0x8001, 0, 0)  # WM_APP+1: re-register
-                time.sleep(0.15)
         elif key == "clear_recent":
             self._cfg["recent"] = []
         save_config(self._cfg)
@@ -904,12 +901,54 @@ class Api:
             user32.SetForegroundWindow(self._hwnd)
             self._window.evaluate_js("window.focusSearch && focusSearch()")
 
+    # ---- show/hide hotkey ----
+    def _hotkey_spec(self):
+        if self._cfg["hotkey"] == "Off":
+            return None
+        spec = self._cfg.get("hotkey_spec")
+        return tuple(spec) if spec else HOTKEYS.get(self._cfg["hotkey"])
+
+    def _hk_command(self, msg):
+        """Ask the hotkey thread to re-register (0x8001) or pause (0x8002), and wait until it has."""
+        if not self._hotkey_thread_id:
+            return
+        self._hk_done.clear()
+        user32.PostThreadMessageW(self._hotkey_thread_id, msg, 0, 0)
+        self._hk_done.wait(1)
+
+    def set_hotkey(self, label, mods, vk):
+        mods, vk = int(mods), int(vk)
+        if not 0 < vk < 255 or mods & ~0xF:
+            return {**self.get_state(), "error": "That key can't be used as a hotkey."}
+        # Without Ctrl/Alt/Win only F-keys, Pause, Scroll Lock and Insert are allowed (anything else breaks typing).
+        if not mods & (0x1 | 0x2 | 0x8) and not (0x70 <= vk <= 0x87 or vk in (0x13, 0x91, 0x2D)):
+            return {**self.get_state(), "error": "Hold Ctrl, Alt or Win as well, so the hotkey doesn't get in the way of typing."}
+        old = (self._cfg["hotkey"], self._cfg.get("hotkey_spec"))
+        self._cfg["hotkey"], self._cfg["hotkey_spec"] = str(label)[:40], [mods, vk]
+        self._hk_command(0x8001)
+        if not self._hotkey_ok:
+            self._cfg["hotkey"], self._cfg["hotkey_spec"] = old
+            self._hk_command(0x8001)
+            return {**self.get_state(), "error": f"{label} is already used by Windows or another app. Try a different combination."}
+        save_config(self._cfg)
+        return self.get_state()
+
+    def clear_hotkey(self):
+        self._cfg["hotkey"], self._cfg["hotkey_spec"] = "Off", None
+        self._hk_command(0x8001)
+        save_config(self._cfg)
+        return self.get_state()
+
+    def pause_hotkey(self, paused):
+        """Released while the user is recording a new hotkey, so pressing the old one doesn't hide the window."""
+        self._hk_command(0x8002 if paused else 0x8001)
+
     def _hotkey_loop(self):
         self._hotkey_thread_id = kernel32.GetCurrentThreadId()
 
         def register():
             user32.UnregisterHotKey(None, 1)
-            spec = HOTKEYS.get(self._cfg["hotkey"])
+            spec = self._hotkey_spec()
             self._hotkey_ok = bool(spec) and bool(user32.RegisterHotKey(None, 1, spec[0] | 0x4000, spec[1]))
 
         register()
@@ -919,6 +958,10 @@ class Api:
                 self._toggle_visible()
             elif msg.message == 0x8001:
                 register()
+                self._hk_done.set()
+            elif msg.message == 0x8002:
+                user32.UnregisterHotKey(None, 1)
+                self._hk_done.set()
 
 
 def focus_existing_instance():
