@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSRS Wiki Reader</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="wiki.css">
+<link rel="stylesheet" href="char.css">
+<link rel="stylesheet" href="prices.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.1"/><circle cx="15.5" cy="15.5" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="15.5" cy="8.5" r="1.1"/><circle cx="8.5" cy="15.5" r="1.1"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 4 4H6l4-4z"/><path d="M12 14v7"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 20v-4h-4"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></symbol>
+    <symbol id="i-mini" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M8 7.5h8M8 11h6"/></symbol>
+  </defs>
+</svg>
+
+<div class="grips" aria-hidden="true">
+  <div data-edge="n"></div><div data-edge="s"></div><div data-edge="e"></div><div data-edge="w"></div>
+  <div data-edge="nw"></div><div data-edge="ne"></div><div data-edge="sw"></div><div data-edge="se"></div>
+</div>
+
+<div class="app">
+  <header class="titlebar" id="titlebar">
+    <div class="brand"><svg class="ic"><use href="#i-book"/></svg><span>OSRS Wiki</span></div>
+    <div class="page-title" id="pageTitle"></div>
+    <div class="win-btns">
+      <button class="wbtn" id="btnMini" title="Mini mode: a small always-on-top search bar"><svg class="ic"><use href="#i-mini"/></svg></button>
+      <button class="wbtn" id="btnPin" title="Keep on top"><svg class="ic"><use href="#i-pin"/></svg></button>
+      <button class="wbtn" id="btnSettings" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
+      <button class="wbtn" id="btnMin" title="Minimize"><svg class="ic"><use href="#i-min"/></svg></button>
+      <button class="wbtn close" id="btnClose" title="Close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="toolbar">
+    <button class="tbtn" id="btnBack" title="Back (Alt+Left)" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+    <button class="tbtn" id="btnFwd" title="Forward (Alt+Right)" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+    <button class="tbtn" id="btnHome" title="Home"><svg class="ic"><use href="#i-home"/></svg></button>
+    <button class="tbtn" id="btnChar" title="Character"><svg class="ic"><use href="#i-user"/></svg></button>
+    <div class="search" id="searchWrap">
+      <svg class="ic"><use href="#i-search"/></svg>
+      <input id="search" type="text" placeholder="Search the wiki" autocomplete="off" spellcheck="false">
+      <kbd>Ctrl K</kbd>
+      <ul class="suggest" id="suggest" role="listbox" hidden></ul>
+    </div>
+    <button class="tbtn" id="btnBookmark" title="Bookmark this page" disabled><svg class="ic"><use href="#i-bookmark"/></svg></button>
+    <button class="tbtn" id="btnToc" title="Sections" disabled><svg class="ic"><use href="#i-list"/></svg></button>
+    <button class="tbtn" id="btnRandom" title="Random page"><svg class="ic"><use href="#i-dice"/></svg></button>
+    <button class="tbtn" id="btnExt" title="Open in browser" disabled><svg class="ic"><use href="#i-ext"/></svg></button>
+  </nav>
+  <div class="progress" id="progress"></div>
+  <div class="mini-preview" id="miniPreview" hidden></div>
+
+  <div class="findbar" id="findBar" hidden>
+    <input id="findInput" type="text" placeholder="Find on page" autocomplete="off" spellcheck="false">
+    <span class="find-count" id="findCount"></span>
+    <button class="fbtn" id="findPrev" title="Previous (Shift+Enter)"><svg class="ic"><use href="#i-up"/></svg></button>
+    <button class="fbtn" id="findNext" title="Next (Enter)"><svg class="ic"><use href="#i-down"/></svg></button>
+    <button class="fbtn" id="findClose" title="Close (Esc)"><svg class="ic"><use href="#i-close"/></svg></button>
+  </div>
+
+  <main class="scroller" id="scroller">
+    <section class="home" id="home">
+      <div class="update-banner" id="updateBanner" hidden></div>
+      <div class="hero">
+        <svg class="hero-ic"><use href="#i-book"/></svg>
+        <h1>Old School RuneScape Wiki</h1>
+        <p>Search above, or jump straight in.</p>
+      </div>
+      <h2 class="home-h home-h-act">Farm timers <button class="link-btn" id="btnAddTimer">+ Add</button></h2>
+      <div class="c-card timers rows" id="timers" hidden></div>
+      <button class="chip" id="btnAddTimer2"><span id="timersEmpty">+ Start a farm run timer</span></button>
+      <div class="c-card timer-add" id="timerAdd" hidden>
+        <div class="recent" id="timerQuick"></div>
+        <select id="timerPreset"></select>
+        <form class="timer-custom" id="timerCustom">
+          <input id="timerLabel" type="text" placeholder="Custom label" maxlength="40" autocomplete="off">
+          <input id="timerH" type="number" min="0" max="336" placeholder="h">
+          <input id="timerM" type="number" min="0" max="59" placeholder="m">
+          <button class="btn small" type="submit">Start</button>
+        </form>
+        <p class="dim">Times are from the wiki and can be off by a few minutes, since crops grow in 5-minute ticks.</p>
+      </div>
+      <div id="watchWrap" hidden>
+        <h2 class="home-h">GE watchlist</h2>
+        <div class="c-card rows watch" id="watch"></div>
+      </div>
+      <div id="bookmarksWrap" hidden>
+        <h2 class="home-h">Bookmarks</h2>
+        <div class="recent" id="bookmarks"></div>
+      </div>
+      <h2 class="home-h">Quick links</h2>
+      <div class="quick" id="quick"></div>
+      <div class="recent-wrap" id="recentWrap" hidden>
+        <h2 class="home-h">Recently viewed</h2>
+        <div class="recent" id="recent"></div>
+      </div>
+      <p class="credit">Content from the <a href="https://oldschool.runescape.wiki" data-ext>Old School RuneScape Wiki</a>, licensed CC BY-NC-SA 3.0. Unofficial reader, not affiliated with Jagex or the Wiki.</p>
+    </section>
+    <article class="wiki" id="article" hidden></article>
+    <section class="char" id="char" hidden></section>
+    <section class="error" id="error" hidden>
+      <h2>Something went wrong</h2>
+      <p id="errorMsg"></p>
+      <button class="btn" id="btnRetry">Try again</button>
+    </section>
+  </main>
+
+  <div class="pop" id="tocPop" hidden><div class="pop-h">Sections</div><ul id="tocList"></ul></div>
+
+  <div class="pop settings" id="setPop" hidden>
+    <div class="pop-h">Settings</div>
+    <div class="row"><span>Theme</span>
+      <div class="seg" id="themeSeg"><button data-v="dark">Dark</button><button data-v="parchment">Parchment</button></div>
+    </div>
+    <div class="row"><span>Text size</span>
+      <div class="stepper"><button id="zoomOut">−</button><output id="zoomVal">100%</output><button id="zoomIn">+</button></div>
+    </div>
+    <div class="row"><span>Show / hide hotkey</span><select id="hotkeySel"></select></div>
+    <p class="note" id="hotkeyNote" hidden>That hotkey is already used by another app. Pick a different one.</p>
+    <div class="row"><span>Recent pages</span><button class="btn small" id="btnClearRecent">Clear</button></div>
+    <div class="row"><span>Updates <span class="dim" id="updStatus"></span></span><button class="btn small" id="btnCheckUpdate">Check now</button></div>
+    <p class="about">OSRS Wiki Reader <span id="ver"></span><br>Content from the <a href="https://oldschool.runescape.wiki" data-ext>Old School RuneScape Wiki</a> (CC BY-NC-SA 3.0). Unofficial, not affiliated with Jagex or the Wiki.</p>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="char.js"></script>
+<script src="prices.js"></script>
+<script src="calc.js"></script>
+<script src="compare.js"></script>
+<script src="timers.js"></script>
+<script src="mini.js"></script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+/* chart colours validated against each theme's surface (dataviz validate_palette.js) */
+:root, [data-theme="dark"] { --chart: #b8892f; --up: #5cb85c; --down: #d9574a; --cmp-a: #b8892f; --cmp-b: #4a8fd0; }
+[data-theme="parchment"] { --chart: #8d5b12; --up: #2e7d32; --down: #b23a2c; --cmp-a: #8d5b12; --cmp-b: #2f6db0; }
+
+.wiki .ge-panel {
+  margin: 0 0 1.2em; padding: 12px 14px 10px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
+  font-size: 13.5px;
+}
+@container (min-width: 700px) { .wiki .ge-panel { clear: none; } }
+.ge-head { display: flex; align-items: center; gap: 8px; }
+.ge-head img { width: 26px; height: 26px; object-fit: contain; }
+.ge-title { font: 600 15px Georgia, "Palatino Linotype", serif; color: var(--accent); }
+.ge-upd { color: var(--text-faint); font-size: 12px; flex: 1; }
+.ge-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 10px; }
+.ge-stats > div { background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 7px 10px; }
+.ge-stats b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; color: var(--text); }
+.ge-stats span { font-size: 11.5px; color: var(--text-faint); }
+.ge-sub { margin-top: 9px; color: var(--text-dim); font-size: 12.5px; }
+.pos { color: var(--up) !important; }
+.neg { color: var(--down) !important; }
+.chg { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chg.up { color: var(--up); }
+.chg.down { color: var(--down); }
+.chg.flat { color: var(--text-faint); }
+
+.ge-chart-head { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 4px; font-size: 12px; color: var(--text-dim); }
+.ge-chart { position: relative; height: 150px; transition: opacity .2s; }
+.ge-chart.stale { opacity: .45; }
+.ge-chart svg { display: block; overflow: visible; }
+.ge-chart .grid { stroke: var(--border); stroke-width: 1; }
+.ge-chart .axis { fill: var(--text-faint); font-size: 10.5px; font-family: "Segoe UI", sans-serif; }
+.ge-chart .ln { fill: none; stroke: var(--chart); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ge-chart .xh { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
+.ge-chart .hover circle { fill: var(--chart); stroke: var(--surface); stroke-width: 2; }
+.ge-chart .hit { fill: transparent; cursor: crosshair; outline: none; }
+.ge-empty { display: grid; place-items: center; height: 100%; color: var(--text-faint); font-size: 12.5px; }
+.ge-tip {
+  position: absolute; top: -6px; transform: translateY(-100%); pointer-events: none; white-space: nowrap;
+  display: flex; flex-direction: column; gap: 1px; padding: 6px 9px;
+  background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow);
+}
+.ge-tip b { font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+.ge-tip span, .ge-tip small { font-size: 11px; color: var(--text-dim); }
+
+/* price alerts */
+.ge-alert { margin-top: 10px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; }
+.ge-alert-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-dim); font-size: 13px; }
+.ge-alert-form select { height: 30px; color: var(--text); }
+.ge-alert-form input { width: 120px; height: 30px; padding: 0 9px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; outline: none; font-variant-numeric: tabular-nums; }
+.ge-alert-form input:focus { border-color: var(--accent); }
+.ge-alert .dim { margin: 8px 0 0; font-size: 11.5px; }
+#geAlertList { display: flex; flex-wrap: wrap; gap: 6px; }
+#geAlertList:not(:empty) { margin-top: 8px; }
+.alert-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px 3px 9px; border: 1px solid var(--accent); border-radius: 999px; font-size: 12.5px; color: var(--text); }
+.alert-chip .ic { width: 13px; height: 13px; color: var(--accent); }
+.alert-chip button { border: 0; background: none; color: var(--text-faint); display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; }
+.alert-chip button:hover { color: var(--danger); background: var(--surface-3); }
+.walert { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 11px; color: var(--accent); white-space: nowrap; }
+.walert .ic { width: 11px; height: 11px; }
+#geAlertBtn.on .ic { fill: currentColor; }
+
+/* XP calculator (skill pages) */
+.wiki .xp-calc { margin: 0 0 1.2em; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; font-size: 13.5px; }
+.xc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
+.xc-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-faint); }
+.xc-grid input {
+  height: 32px; padding: 0 9px; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; outline: none;
+}
+.xc-grid input:focus { border-color: var(--accent); }
+.xc-out { margin-top: 10px; }
+.xc-res { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.xc-res b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.xc-res span { font-size: 11.5px; color: var(--text-faint); }
+.xc-done { display: flex; align-items: center; gap: 6px; color: var(--up); font-weight: 600; }
+.xc-done .ic { width: 16px; height: 16px; }
+
+.xc-methods { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.xc-methods summary { cursor: pointer; color: var(--text-dim); font-size: 12.5px; }
+.xc-mtools { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.xc-mtools input[type="text"] {
+  flex: 1; min-width: 140px; height: 30px; padding: 0 9px; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; outline: none;
+}
+.xc-mtools input[type="text"]:focus { border-color: var(--accent); }
+.xc-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); cursor: pointer; }
+.xc-chk input { accent-color: var(--accent); }
+.xc-list { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
+.xc-list > .dim { padding: 10px 12px; font-size: 12.5px; }
+.xc-m {
+  display: grid; grid-template-columns: 24px 1fr auto 86px; align-items: center; gap: 9px; width: 100%;
+  padding: 5px 10px; border: 0; border-bottom: 1px solid var(--border); background: none; text-align: left; font-size: 13px;
+}
+.xc-m:hover { background: var(--surface-2); }
+.xc-m.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.xc-m.locked { opacity: .5; }
+.xc-m img { width: 24px; height: 24px; object-fit: contain; }
+.xc-mn { display: flex; flex-direction: column; min-width: 0; }
+.xc-mn span, .xc-mn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xc-mn small { color: var(--text-faint); font-size: 11px; }
+.xc-lv { font-size: 11.5px; color: var(--text-faint); }
+.xc-m b { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.xc-more { padding: 8px 12px !important; }
+
+/* farm timers (home) */
+.home-h-act { display: flex; align-items: center; justify-content: space-between; }
+.link-btn { border: 0; background: none; color: var(--link); font: 600 11.5px "Segoe UI", sans-serif; letter-spacing: 0; text-transform: none; padding: 0; }
+.link-btn:hover { color: var(--link-hover); }
+#btnAddTimer2 { color: var(--text-dim); }
+#timers:not([hidden]) ~ #btnAddTimer2 { display: none; }
+.trow { display: grid; grid-template-columns: 1fr auto 26px 26px; align-items: center; gap: 4px 8px; padding: 7px 10px 8px 14px; }
+.trow + .trow { border-top: 1px solid var(--border); }
+.tlabel { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tleft { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
+.trow.done .tleft { color: var(--up); font-weight: 700; }
+.tbar { grid-column: 1 / -1; height: 5px; background: var(--bg); border-radius: 99px; overflow: hidden; }
+.tbar > span { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .9s linear; }
+.trow.done .tbar > span { background: var(--up); }
+.tbtn-s { width: 26px; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); display: grid; place-items: center; }
+.tbtn-s .ic { width: 14px; height: 14px; }
+.tbtn-s:hover { background: var(--surface-3); color: var(--text); }
+.timer-add { margin-top: 8px !important; display: flex; flex-direction: column; gap: 10px; }
+.timer-add .chip .dim { font-size: 11px; }
+.timer-add select { height: 32px; color: var(--text); }
+.timer-custom { display: flex; gap: 6px; }
+.timer-custom input { height: 30px; padding: 0 8px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; outline: none; min-width: 0; }
+.timer-custom input:focus { border-color: var(--accent); }
+#timerLabel { flex: 1; }
+#timerH, #timerM { width: 56px; }
+.timer-add .dim { margin: 0; font-size: 11.5px; }
+
+/* home: watchlist & bookmarks */
+.home .c-card { margin-top: 0; }
+.watch .row { grid-template-columns: 1fr auto 96px 22px; cursor: pointer; padding: 5px 10px 5px 14px; }
+.watch .row:hover { background: var(--surface-2); }
+.watch .row b { grid-column: 3; }
+.watch .chg { grid-column: 2; font-size: 12px; }
+.wname { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wname img { width: 24px; height: 24px; object-fit: contain; flex: none; }
+.wname span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wx { grid-column: 4; width: 22px; height: 22px; border: 0; background: none; color: var(--text-faint); display: grid; place-items: center; border-radius: 6px; opacity: 0; }
+.wx .ic { width: 13px; height: 13px; }
+.watch .row:hover .wx { opacity: 1; }
+.wx:hover { color: var(--danger); background: var(--surface-3); }
+.chip.bm { display: inline-flex; align-items: center; gap: 5px; }
+.chip.bm .ic { width: 13px; height: 13px; color: var(--accent); fill: currentColor; }
+#btnBookmark.on .ic { fill: currentColor; }
