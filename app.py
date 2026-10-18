@@ -59,7 +59,10 @@ STOPWORDS = set(
     "a an the is are was were be been do does did i im i'm me my mine you your we our to of in on at for from with by "
     "and or but how what whats what's where when which who why can could should would will get got go going best good "
     "way ways need needed it its it's this that these those there here any some much many more most than then so if "
-    "into about as up out lvl please tell explain".split())
+    "into about as up out lvl please tell explain ok okay thanks thank next instead also else then just really "
+    "now there's".split())
+FOLLOW_UP = re.compile(r"^\s*(and|but|so|also|ok|okay|then|what about|how about|what if|same)\b"
+                       r"|\b(instead|it|that|them|this one|those)\b", re.I)
 SKILLS = ["Attack", "Hitpoints", "Mining", "Strength", "Agility", "Smithing", "Defence", "Herblore", "Fishing",
           "Ranged", "Thieving", "Cooking", "Prayer", "Crafting", "Firemaking", "Magic", "Fletching", "Woodcutting",
           "Runecraft", "Slayer", "Farming", "Construction", "Hunter", "Sailing"]
@@ -919,19 +922,27 @@ class Api:
         if limit and used >= limit:
             return {"error": f"You've used today's {limit} questions (your daily limit in Settings). It resets tomorrow."}
 
+        # Follow-ups ("what about with melee instead?") rarely name the page, so keep the main page from the last answer.
+        topic = next(((t.get("sources") or [None])[0] for t in reversed(history or [])
+                      if t.get("role") == "model" and t.get("sources")), None)
         try:
-            pages = [self._page_text(t) for t in self._find_pages(question)]
-            pages = [p for p in pages if p["text"]]
+            titles = self._find_pages(question)
+            if topic and (len(titles) < 2 or FOLLOW_UP.search(question)):
+                titles = [topic] + [t for t in titles if t != topic]
+            pages = [p for p in (self._page_text(t) for t in titles[:3]) if p["text"]]
         except Exception:
             pages = []
         context = "\n\n".join(f"=== OSRS Wiki page: {p['title']} ===\n{p['text']}" for p in pages)
         player = self._player_summary()
         system = GEMINI_SYSTEM + (f"\n\nThe player asking: {player}" if player else "")
 
+        # Only the last 2 exchanges, with older answers shortened: enough for follow-ups, without resending the
+        # whole chat every time. (Free quota counts requests, not size, but smaller requests answer faster.)
         contents = []
-        for turn in (history or [])[-6:]:
+        for turn in (history or [])[-4:]:
             if turn.get("role") in ("user", "model") and turn.get("text"):
-                contents.append({"role": turn["role"], "parts": [{"text": str(turn["text"])[:4000]}]})
+                limit = 1500 if turn["role"] == "model" else 500
+                contents.append({"role": turn["role"], "parts": [{"text": str(turn["text"])[:limit]}]})
         prompt = (f"Wiki pages for this question:\n\n{context}\n\n---\n\nQuestion: {question}" if context
                   else f"(No matching wiki pages were found.)\n\nQuestion: {question}")
         contents.append({"role": "user", "parts": [{"text": prompt}]})

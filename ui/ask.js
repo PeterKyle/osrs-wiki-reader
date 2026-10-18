@@ -124,9 +124,15 @@ async function send(question) {
   thinking.innerHTML = '<span class="dots"><i></i><i></i><i></i></span> Reading the wiki…';
   chat.body.appendChild(thinking);
   scrollChat();
-  const r = await api.ask(question, chat.history.map(({ role, text }) => ({ role, text })));
-  thinking.remove();
-  chat.busy = false;
+  let r;
+  try {
+    r = await api.ask(question, chat.history.map(({ role, text, sources }) => ({ role, text, sources })));
+  } catch (err) {
+    r = { error: 'Something went wrong sending that. Please try again.' };
+  } finally {
+    thinking.remove();
+    chat.busy = false;   // never leave the chat stuck if a request fails
+  }
   if (r.needKey) { showSetup(r.error); return; }
   if (r.error) {
     const d = addBubble('model', '');

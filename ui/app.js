@@ -748,7 +748,7 @@ els.article.addEventListener('click', (e) => {
 /* ---------------- keyboard ---------------- */
 
 document.addEventListener('keydown', (e) => {
-  const typing = e.target.matches('input, select');
+  const typing = e.target.matches('input, select, textarea, [contenteditable]');   // let text fields keep their keys
   if (e.ctrlKey && e.key === 'f') {
     e.preventDefault();
     openFind();
