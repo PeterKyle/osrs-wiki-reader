@@ -75,6 +75,7 @@ const API = {
   xp_timeline: async (n, metric, period) => ({ ...clone(window.__PROFILE.timeline), metric, period }),
   gim_group: async (n) => (String(n).toLowerCase() === 'clyde lives' ? clone(window.__PROFILE.gim) : { needName: true }),
   set_gim_group: async () => clone(window.__PROFILE.gim),
+  group_overview: async (n) => (String(n).toLowerCase() === 'clyde lives' && window.__GROUP_OVERVIEW ? clone(window.__GROUP_OVERVIEW) : { needName: true }),
   latest_update: async () => clone(window.__PROFILE.update),
   pet_rates: async () => clone(window.__PROFILE.pets),
   ca_data: async () => clone(window.__PROFILE.ca),

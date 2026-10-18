@@ -796,16 +796,108 @@ function renderGroupResult(box, p, g) {
   if (g.error) { box.innerHTML = `<h2 class="home-h">Group: ${escapeHtml(g.group)}</h2><div class="c-card c-note">${escapeHtml(g.error)}</div>`; return; }
   const members = [...g.members].sort((a, b) => b.xp - a.xp);
   const totalXp = members.reduce((t, m) => t + m.xp, 0);
-  const lv = (m, k) => m.skills[k] || 1;
-  const combat = (m) => combatLevel({ Attack: lv(m, 'attack'), Strength: lv(m, 'strength'), Defence: lv(m, 'defence'), Hitpoints: lv(m, 'hitpoints') || 10,
-    Ranged: lv(m, 'ranged'), Magic: lv(m, 'magic'), Prayer: lv(m, 'prayer') });
   box.innerHTML = `<h2 class="home-h">Group: ${escapeHtml(g.group)} <span class="since">${members.length} members · ${fmtShort(totalXp)} XP together</span>
       <button class="linkbtn" id="gimChange">Change</button></h2>
-    <div class="c-card rows gim">${members.map((m) => `<div class="row${m.name.toLowerCase() === p.name.toLowerCase() ? ' me' : ''}">
-      <button class="linkbtn" data-acct="${escapeHtml(m.name)}">${escapeHtml(m.name)}</button>
-      <span class="dim">Combat ${combat(m)}</span><span class="dim">Total ${fmt(m.total)}</span><b>${fmtShort(m.xp)} XP</b></div>`).join('')}</div>`;
-  box.querySelectorAll('[data-acct]').forEach((b) => (b.onclick = () => openCharacter(b.dataset.acct)));
+    <div class="gim gim-cards">${members.map((m) => gimCard(m, null, p)).join('')}</div>
+    <div id="gimMore"><div class="dim qs-loading">Loading everyone's profiles to put them together…</div></div>`;
+  const bind = () => box.querySelectorAll('[data-acct]').forEach((b) => (b.onclick = () => openCharacter(b.dataset.acct)));
+  bind();
   $('gimChange').onclick = async () => { await api.set_gim_group(p.name, ''); renderGroup(p); };
+  api.group_overview(p.name).then((o) => {
+    const more = $('gimMore');
+    if (!more || !more.isConnected) return;
+    if (!o || !o.members) { more.innerHTML = ''; return; }
+    const by = Object.fromEntries(o.members.map((x) => [x.name.toLowerCase(), x]));
+    box.querySelector('.gim-cards').innerHTML = members.map((m) => gimCard(m, by[m.name.toLowerCase()], p)).join('');
+    more.innerHTML = groupCombinedHtml(o.members.filter((x) => x.skills));
+    bind();
+  });
+}
+
+const gimLv = (skills, k) => (skills[k] || 1);
+function gimCombat(m) {
+  const l = (k) => gimLv(m.skills, k);
+  return combatLevel({ Attack: l('attack'), Strength: l('strength'), Defence: l('defence'), Hitpoints: l('hitpoints') || 10,
+    Ranged: l('ranged'), Magic: l('magic'), Prayer: l('prayer') });
+}
+
+// one member: the group hiscores' numbers, plus their own profile once it's loaded (x)
+function gimCard(m, x, p) {
+  const me = m.name.toLowerCase() === p.name.toLowerCase();
+  const done = x && x.quests ? Object.values(x.quests).filter((v) => v === 2).length : null;
+  const stat = (label, v) => `<span><b>${v}</b>${label}</span>`;
+  return `<div class="gim-card${me ? ' me' : ''}">
+    <div class="gim-top"><button class="gim-name" data-acct="${escapeHtml(m.name)}">${escapeHtml(m.name)}</button>${me ? '<span class="gim-you">you</span>' : ''}</div>
+    <div class="gim-line">Combat <b>${gimCombat(m)}</b> · Total <b>${fmt(m.total)}</b> · <b>${fmtShort(m.xp)}</b> XP</div>
+    ${x ? `<div class="gim-stats">${stat('this week', x.week ? '+' + fmtShort(x.week) : '–')}${stat('quests', done == null ? '–' : done)}${stat('log slots', x.clogCount == null ? '–' : fmt(x.clogCount))}${stat('EHB', x.ehb == null ? '–' : fmt(Math.round(x.ehb)))}</div>` : ''}
+    ${x && x.unranked ? '<div class="gim-note">Not on the main hiscores yet, so only the group page’s levels.</div>' : ''}
+  </div>`;
+}
+
+// everyone's profiles put together: best in each skill, bosses, collection log, quests, this week
+function groupCombinedHtml(ms) {
+  if (!ms.length) return '';
+  let html = '';
+  // best in each skill (highest level, then XP), with everyone's level in the tooltip
+  const best = SKILL_GRID.map((n) => {
+    const all = ms.map((m) => ({ name: m.name, lv: (m.skills[n] || [1, -1])[0], xp: (m.skills[n] || [1, -1])[1] }))
+      .sort((a, b) => b.lv - a.lv || b.xp - a.xp);
+    return { n, top: all[0], all };
+  });
+  html += `<h2 class="home-h">Best in each skill <span class="since">who to ask for what</span></h2><div class="skills gim-skills">` +
+    best.map(({ n, top, all }) => `<a class="sk${top.lv >= 99 ? ' maxed' : ''}" href="${wikiHref(n)}" title="${escapeHtml(n + '\n' + all.map((a) => `${a.name}: ${a.lv}`).join('\n'))}">
+      <img src="${skillIcon(n)}" alt=""><span class="gim-who">${escapeHtml(top.name)}</span><span class="lv">${top.lv}</span></a>`).join('') + `</div>`;
+
+  // bosses: kills added up, and who has the most
+  const bosses = {};
+  ms.forEach((m) => Object.entries(m.bosses || {}).forEach(([b, k]) => {
+    const e = bosses[b] || (bosses[b] = { total: 0, top: null, topK: 0, n: 0 });
+    e.total += k; e.n += 1;
+    if (k > e.topK) { e.topK = k; e.top = m.name; }
+  }));
+  const blist = Object.entries(bosses).sort((a, b) => b[1].total - a[1].total);
+  if (blist.length) {
+    const row = ([b, e]) => `<div class="row"><a href="${wikiHref(KC_PAGES[b] || b)}">${escapeHtml(b)}</a><span class="dim">${e.n > 1 ? `most: ${escapeHtml(e.top)} (${fmt(e.topK)})` : escapeHtml(e.top)}</span><b>${fmt(e.total)}</b></div>`;
+    html += `<h2 class="home-h">Bosses together <span class="since">${blist.length} bosses · ${fmt(blist.reduce((t, [, e]) => t + e.total, 0))} kills</span></h2>
+      <div class="c-card rows gim-bosses">${blist.slice(0, 10).map(row).join('')}` +
+      (blist.length > 10 ? `<details class="qs-more"><summary>${blist.length - 10} more</summary>${blist.slice(10).map(row).join('')}</details>` : '') + `</div>`;
+  }
+
+  // collection log: each member, and the slots you have between you
+  const logged = ms.filter((m) => m.clogCount != null);
+  if (logged.length) {
+    const total = Math.max(...logged.map((m) => m.clogTotal || 0)) || null;
+    const union = new Set(logged.flatMap((m) => m.clog || []));
+    const max = total || Math.max(...logged.map((m) => m.clogCount));
+    html += `<h2 class="home-h">Collection log <span class="since">${logged.length} of ${ms.length} synced with WikiSync</span></h2><div class="c-card goals">` +
+      (union.size && logged.length > 1 ? `<div class="gim-union">Between you: <b>${fmt(union.size)}</b>${total ? ` / ${fmt(total)}` : ''} different slots</div>` : '') +
+      [...logged].sort((a, b) => b.clogCount - a.clogCount).map((m) => `<div class="goal"><span class="gn wide">${escapeHtml(m.name)}</span>
+        <span class="gtrack"><span style="width:${Math.max(2, (m.clogCount / max) * 100)}%"></span></span><span class="gv">${fmt(m.clogCount)}</span><span></span></div>`).join('') + `</div>`;
+  }
+
+  // quests: done by everyone, by someone, by nobody
+  const synced = ms.filter((m) => m.quests);
+  if (synced.length) {
+    const names = [...new Set(synced.flatMap((m) => Object.keys(m.quests)))];
+    const doneBy = (q) => synced.filter((m) => m.quests[q] === 2).map((m) => m.name);
+    const everyone = names.filter((q) => doneBy(q).length === synced.length);
+    const some = names.filter((q) => { const d = doneBy(q).length; return d > 0 && d < synced.length; });
+    html += `<h2 class="home-h">Quests <span class="since">${synced.length} of ${ms.length} synced with WikiSync</span></h2><div class="c-card">
+      ${progressRow('Done by everyone', everyone.length, names.length)}
+      ${progressRow('Done by at least one of you', everyone.length + some.length, names.length)}
+      ${some.length ? `<details class="todo"><summary>${some.length} quests only some of you have done</summary><ul>${some.sort().map((q) =>
+        `<li><a href="${wikiHref(q)}">${escapeHtml(q)}</a> <span class="dim">${doneBy(q).map(escapeHtml).join(', ')}</span></li>`).join('')}</ul></details>` : ''}
+    </div>`;
+  }
+
+  // this week's XP
+  const week = ms.filter((m) => m.week > 0).sort((a, b) => b.week - a.week);
+  if (week.length) {
+    html += `<h2 class="home-h">This week <span class="since">from Wise Old Man</span></h2><div class="c-card gains gim-week">` +
+      week.map((m) => `<div class="gbar"><span class="gn">${escapeHtml(m.name)}</span>
+        <span class="gtrack"><span style="width:${Math.max(3, (m.week / week[0].week) * 100)}%"></span></span><span class="gv">+${fmtShort(m.week)}</span></div>`).join('') + `</div>`;
+  }
+  return html;
 }
 
 /* ---------------- shareable profile card (canvas → copy / save) ---------------- */

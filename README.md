@@ -53,9 +53,9 @@ The Wise Old Man uses Google's Gemini with **your own free key**. It takes about
 - **Wiki reader**: a calm, polished design with auto, dark and light themes, search with autocomplete, find on page (Ctrl+F), bookmarks, history. Tables shrink to fit narrow windows.
 - **Global hotkeys** you can set to any combination: show/hide (Ctrl+Alt+W) and open the Wise Old Man (Ctrl+Alt+Q), even in-game. Ctrl+N starts a new chat.
 - **Works like a normal Windows 11 window**: the Snap Layouts bar when you drag it to the top, edge and corner snapping, Snap Assist, Win+Arrow keys, and maximize (button or double-click the top bar). Plus a **pin** to keep it above the game and a **mini mode** search strip.
-- **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side.
+- **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side. The profile is split into tabs (Overview, Progress, Bosses, Collection, Quests, Bank, Group) and remembers the one you used last.
   - Goals (closest 99s, next level-ups, hours to max), milestones with dates, your best day/week/month/year, and an XP-over-time chart.
-  - Your Group Ironman group, with every member's levels.
+  - **Group** tab for Group Ironman: a card per member (combat, total, XP, this week, quests, collection log, EHB), plus everyone combined: who's best in each skill, boss kills added up (and who has the most), collection log slots between you, and which quests everyone / only some of you have done.
   - Pet chances: every boss pet ranked by how likely you'd have it by your kill count.
   - Your account stays fresh on Wise Old Man: the app updates it every 6 hours while it's open (only if Wise Old Man already tracks it; switch off in Settings).
   - Combat achievements: points, the reward tier you've unlocked, how far to the next, and progress per tier (needs WikiSync).

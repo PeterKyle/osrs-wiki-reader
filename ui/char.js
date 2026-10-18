@@ -196,8 +196,9 @@ function renderPlayer(p) {
     </div>
     <div class="c-stats">${statBits.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join('')}</div>
     <div class="c-meta">Hiscores ${timeAgo(p.fetchedAt)}${wom ? ` · Wise Old Man updated ${timeAgo(wom.updatedAt)}` : ''}${p.sync ? ` · WikiSync ${timeAgo(p.sync.timestamp)}` : ''}</div>
-  </div>
-  <div class="skills">${tiles}
+  </div>`;
+  const head = html;
+  html = `<div class="skills">${tiles}
     <div class="sk total"><img src="${skillIcon('Stats')}" alt=""><span>Total level</span><span class="lv">${overall && overall.level > 0 ? fmt(overall.level) : '–'}</span></div>
   </div>`;
 
@@ -220,11 +221,10 @@ function renderPlayer(p) {
     }
   }
 
-  // goals, XP over time, milestones & records, group (profile.js)
-  html += '<div id="pxBank"></div>' + goalsHtml(p) + chartHtml(p) + '<div id="pxExtras"></div><div id="pxGroup"></div>';
+  const overview = html + goalsHtml(p);
 
   // quests & diaries
-  html += `<h2 class="home-h">Quests &amp; diaries</h2>`;
+  html = `<h2 class="home-h">Quests &amp; diaries</h2>`;
   if (p.sync) {
     const q = Object.entries(p.sync.quests);
     const done = q.filter(([, v]) => v === 2);
@@ -244,7 +244,7 @@ function renderPlayer(p) {
       <a href="${wikiHref('RuneScape:WikiSync')}">WikiSync</a> plugin in RuneLite, log in once, and it'll show up here.</div>`;
   }
 
-  html += '<div id="pxClog"></div><div id="pxCA"></div><div id="pxPets"></div>';   // collection log, CAs, pet chances (profile.js)
+  const quests = html;
 
   // bosses, clues and other activities
   const acts = p.activities.filter((a) => a.score > 0);
@@ -252,6 +252,7 @@ function renderPlayer(p) {
   const isBoss = (a) => p.activities.indexOf(a) > lastMisc;
   const bosses = acts.filter(isBoss).sort((a, b) => b.score - a.score);
   const other = acts.filter((a) => !isBoss(a));
+  html = '';
   if (bosses.length) {
     html += `<h2 class="home-h">Bosses <span class="since">${bosses.length} with kills</span></h2><div class="c-card rows">` +
       bosses.map((b) => {
@@ -259,14 +260,27 @@ function renderPlayer(p) {
         return `<div class="row"><a href="${wikiHref(b.name)}">${escapeHtml(b.name)}</a>${g > 0 ? `<span class="gain">+${fmt(g)}</span>` : ''}<b>${fmt(b.score)}</b><span class="rank">#${fmt(b.rank)}</span></div>`;
       }).join('') + `</div>`;
   }
+  html += '<div id="pxCA"></div>';   // combat achievements (profile.js)
   if (other.length) {
     html += `<h2 class="home-h">Clues &amp; activities</h2><div class="c-card rows">` +
       other.map((a) => `<div class="row"><span>${escapeHtml(a.name)}</span><b>${fmt(a.score)}</b><span class="rank">#${fmt(a.rank)}</span></div>`).join('') + `</div>`;
   }
-  html += `<p class="credit">Data from the official OSRS hiscores, <a href="https://wiseoldman.net" data-ext>Wise Old Man</a> and WikiSync.</p>`;
-
-  els.char.innerHTML = html;
+  // the sections filled in later by profile.js (#px...) live in their tab; a tab with nothing in it stays hidden
+  const tabs = [
+    ['overview', 'Overview', overview],
+    ['progress', 'Progress', chartHtml(p) + '<div id="pxExtras"></div>'],
+    ['bosses', `Bosses${bosses.length ? ` <small>${bosses.length}</small>` : ''}`, html],
+    ['collection', 'Collection', '<div id="pxClog"></div><div id="pxPets"></div>'],
+    ['quests', 'Quests', quests],
+    ['bank', 'Bank', '<div id="pxBank"></div>'],
+    ['group', 'Group', '<div id="pxGroup"></div>'],
+  ];
+  els.char.innerHTML = head +
+    `<nav class="c-tabs" id="charTabs" role="tablist">${tabs.map(([id, label]) => `<button role="tab" data-tab="${id}" hidden>${label}</button>`).join('')}</nav>` +
+    tabs.map(([id, , body]) => `<section class="c-panel" data-panel="${id}" role="tabpanel" hidden>${body}</section>`).join('') +
+    `<p class="credit">Data from the official OSRS hiscores, <a href="https://wiseoldman.net" data-ext>Wise Old Man</a> and WikiSync.</p>`;
   bindPicker();
+  initCharTabs(acctType !== 'regular');
 
   $('btnMe').onclick = async () => {
     state = await api.set_me(isMe ? null : p.name);
@@ -503,3 +517,59 @@ window.checkRequirements = async function (pageTitle) {
   banner.innerHTML = `<span class="qc-icon">${svgIcon(ownStatus === 2 || ready ? 'i-check' : 'i-list')}</span>
     <span>${head}${parts.length ? ': ' + parts.join(' · ') : ''}${!p.sync ? `<br><span class="dim">Quest progress needs the <a href="${wikiHref('RuneScape:WikiSync')}">WikiSync</a> RuneLite plugin.</span>` : ''}</span>`;
 };
+
+/* ---------------- profile tabs ---------------- */
+
+const CHAR_TAB_KEY = 'charTab';
+let charTabObserver = null;
+// Shows one tab's panel. Tabs whose panel is still empty (sections that load later, or don't apply) stay hidden
+// until something arrives; the tab you used last is reopened once it has content.
+function initCharTabs(groupish) {
+  const bar = $('charTabs');
+  if (!bar) return;
+  let want = 'overview';
+  try { want = localStorage.getItem(CHAR_TAB_KEY) || 'overview'; } catch (e) { /* default */ }
+  let picked = false;
+  const btn = (id) => bar.querySelector(`[data-tab="${id}"]`);
+  const panel = (id) => els.char.querySelector(`[data-panel="${id}"]`);
+  const current = () => (bar.querySelector('[data-tab].on') || {}).dataset;
+  const set = (id, user) => {
+    bar.querySelectorAll('[data-tab]').forEach((b) => { b.classList.toggle('on', b.dataset.tab === id); b.setAttribute('aria-selected', b.dataset.tab === id); });
+    els.char.querySelectorAll('[data-panel]').forEach((x) => (x.hidden = x.dataset.panel !== id));
+    if (!user) return;
+    picked = true;
+    try { localStorage.setItem(CHAR_TAB_KEY, id); } catch (e) { /* not remembered */ }
+    const chrome = els.scroller.getBoundingClientRect().top + parseFloat(getComputedStyle(els.scroller).paddingTop);
+    const top = bar.getBoundingClientRect().top;
+    if (top < chrome) els.scroller.scrollTop += top - chrome - 6;   // scrolled past the tabs: bring them back
+    if (typeof refreshFind === 'function') refreshFind();
+  };
+  const sync = () => {
+    bar.querySelectorAll('[data-tab]').forEach((b) => {
+      const x = panel(b.dataset.tab);
+      const empty = !x.textContent.trim() && !x.querySelector('img, canvas, svg, form, input');
+      b.hidden = empty || (b.dataset.tab === 'group' && !groupish && !x.querySelector('.gim'));
+    });
+    const cur = current();
+    if (!picked && !btn(want).hidden && (!cur || cur.tab !== want)) set(want);
+    else if (!cur || btn(cur.tab).hidden) set('overview');
+  };
+  bar.onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) set(b.dataset.tab, true); };
+  bar.onkeydown = (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const vis = [...bar.querySelectorAll('[data-tab]:not([hidden])')];
+    const i = vis.findIndex((b) => b.classList.contains('on'));
+    const n = vis[(i + (e.key === 'ArrowRight' ? 1 : -1) + vis.length) % vis.length];
+    if (n) { e.preventDefault(); set(n.dataset.tab, true); n.focus(); }
+  };
+  if (charTabObserver) charTabObserver.disconnect();
+  let queued = false;
+  charTabObserver = new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => { queued = false; if (bar.isConnected) sync(); });
+  });
+  els.char.querySelectorAll('[data-panel]').forEach((x) => charTabObserver.observe(x, { childList: true, subtree: true, characterData: true }));
+  sync();
+}
+window.setCharTab = (id) => { const b = document.querySelector(`#charTabs [data-tab="${id}"]`); if (b) b.click(); };

@@ -34,7 +34,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.8.1"
+VERSION = "1.9.0"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -2007,6 +2007,52 @@ class Api:
         except Exception as e:
             return {"group": group, "error": f"Couldn't reach the Group Ironman hiscores ({e.__class__.__name__})."}
         return {"group": group, "members": members}
+
+    def group_overview(self, rsn):
+        """Every member of the account's Group Ironman group with their own profile (hiscores, Wise Old Man,
+        WikiSync), so the Group tab can combine them: best in each skill, bosses, collection log and quests."""
+        g = self.gim_group(rsn)
+        if not g.get("members"):
+            return g
+        key = g["group"].lower()
+        with self._mem_lock:
+            hit = self._gim.get(("overview", key))
+        if hit and time.time() - hit[0] < 300:
+            return hit[1]
+        names = [m["name"] for m in g["members"]][:5]
+        with ThreadPoolExecutor(max_workers=len(names)) as ex:   # everyone at once
+            profiles = dict(zip(names, ex.map(lambda n: self.player(n), names)))
+        out = []
+        for m in g["members"][:5]:
+            p = profiles.get(m["name"]) or {}
+            if p.get("error"):   # too new / too low to be ranked: the group page's levels, plus WikiSync if they use it
+                try:
+                    sync = fetch_wikisync(m["name"])
+                except Exception:
+                    sync = None
+                out.append({"name": m["name"], "gim": m, "unranked": True,
+                            "skills": {("Runecraft" if k == "runecrafting" else k.title()): [v, -1]
+                                       for k, v in (m.get("skills") or {}).items()} | {"Overall": [m.get("total") or -1, m.get("xp") or -1]},
+                            "bosses": {}, "quests": (sync or {}).get("quests"), "clog": None,
+                            "clogCount": len((sync or {}).get("collectionLog") or []) or None, "clogTotal": None,
+                            "week": None, "ehb": None, "ehp": None})
+                continue
+            acts = p.get("activities") or []
+            last_misc = next((i for i, a in enumerate(acts) if a.get("name") == "Collections Logged"), -1)
+            sync, wom, clog = p.get("sync") or {}, p.get("wom") or {}, p.get("clog") or {}
+            out.append({
+                "name": p.get("name") or m["name"], "gim": m,
+                "skills": {s["name"]: [s.get("level", -1), s.get("xp", -1)] for s in p.get("skills") or []},
+                "bosses": {a["name"]: a["score"] for a in acts[last_misc + 1:] if a.get("score", 0) > 0},
+                "quests": {q: v for q, v in (sync.get("quests") or {}).items()} if sync else None,
+                "clog": clog.get("items") if clog else None, "clogCount": clog.get("count"), "clogTotal": clog.get("total"),
+                "week": ((wom.get("gains") or {}).get("skills") or {}).get("overall"),
+                "ehb": wom.get("ehb"), "ehp": wom.get("ehp"),
+            })
+        result = {"group": g["group"], "members": out}
+        with self._mem_lock:
+            self._gim[("overview", key)] = (time.time(), result)
+        return result
 
     def set_gim_group(self, rsn, group):
         rsn, group = (rsn or "").strip()[:12], re.sub(r"\s+", " ", (group or "").strip())[:12]

@@ -50,14 +50,37 @@ const S = {
       compact: getComputedStyle(cell).paddingLeft === '8px', fadeRight: wrap.classList.contains('more-r'), pageRight: rect(els.scroller).right };
   },
   // the extra profile sections, with real data for Clyde Lives
+  async tabs() {   // the profile in tabs: which tabs show, switching, the bar staying in view, the last tab remembered
+    try { localStorage.removeItem('charTab'); } catch (e) { /* */ }
+    await openCharacter('Clyde Lives'); await wait(1500);
+    const shown = () => [...document.querySelectorAll('#charTabs [data-tab]:not([hidden])')].map((b) => b.dataset.tab);
+    const active = () => (document.querySelector('#charTabs .on') || {}).dataset.tab;
+    const first = { tabs: shown(), active: active(), panels: [...document.querySelectorAll('.c-panel:not([hidden])')].length };
+    const tab = QS.get('tab');
+    if (tab) setCharTab(tab); await wait(300);
+    if (QS.get('scroll')) { els.scroller.scrollTop = 900; await wait(200); }
+    const bar = $id('charTabs').getBoundingClientRect();
+    const chromeBottom = document.querySelector('.chrome, header') ? els.scroller.getBoundingClientRect().top + parseFloat(getComputedStyle(els.scroller).paddingTop) : 0;
+    await openCharacter('Woox'); await wait(800); await openCharacter('Clyde Lives'); await wait(1200);
+    return { first, after: active(), barTop: Math.round(bar.top), chromeBottom: Math.round(chromeBottom), remembered: active() };
+  },
+  async group() {   // the Group tab: member cards with each profile, and everyone combined
+    await openCharacter('Clyde Lives'); await wait(1500);
+    setCharTab('group'); await wait(600);
+    if (QS.get('down')) { await scrollTo(document.querySelectorAll('#gimMore .home-h')[+QS.get('down')], 110); await wait(200); }
+    const t = (s) => [...document.querySelectorAll(s)].map((x) => x.textContent.replace(/\s+/g, ' ').trim());
+    return { cards: document.querySelectorAll('.gim-card').length, statCards: document.querySelectorAll('.gim-card .gim-stats').length,
+      unranked: document.querySelectorAll('.gim-card .gim-note').length, skillTiles: document.querySelectorAll('.gim-skills .sk').length,
+      heads: t('#gimMore .home-h').map((h) => h.split(' ')[0]), firstBoss: t('.gim-bosses .row')[0] || null };
+  },
   async profile() {
     await openCharacter('Clyde Lives'); await wait(1500);
     const q = (s) => els.char.querySelector(s);
     return {
       goals: !!q('.goals .goal-top'), closest99s: els.char.querySelectorAll('.goals h3').length,
       milestones: els.char.querySelectorAll('.milestones li').length, records: els.char.querySelectorAll('.records > div').length,
-      chartLine: !!q('#xpcBox path.ln'), groupMembers: els.char.querySelectorAll('.gim .row').length,
-      groupMeHighlighted: !!q('.gim .row.me'), shareButton: !!$id('btnShare'),
+      chartLine: !!q('#xpcBox path.ln'), groupMembers: els.char.querySelectorAll('.gim-card').length,
+      groupMeHighlighted: !!q('.gim-card.me'), shareButton: !!$id('btnShare'),
     };
   },
   async profilegoals() {
@@ -68,7 +91,7 @@ const S = {
   async profilegroup() {
     await openCharacter('Clyde Lives'); await wait(1500);
     $id('pxGroup').scrollIntoView(); els.scroller.scrollTop -= 420; await wait(300);
-    return { groupMembers: els.char.querySelectorAll('.gim .row').length };
+    return { groupMembers: els.char.querySelectorAll('.gim-card').length };
   },
   async profilechart() {
     await openCharacter('Clyde Lives'); await wait(1200);
