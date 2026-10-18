@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.6.1"
+VERSION = "1.6.2"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -452,8 +452,14 @@ def item_key(name):
 
 
 def parse_bank_export(text):
-    """{item name: quantity} from a pasted bank export. Understands Bank Memory's TSV ("Item id, Item name,
-    Item quantity"), Data Export's CSV, JSON lists, and plain "name, quantity" lines. Duplicates are added up."""
+    """{item name: quantity} from a pasted bank export (see parse_bank_rows)."""
+    return parse_bank_rows(text)[0]
+
+
+def parse_bank_rows(text):
+    """({item name: quantity}, {item name: item id}) from a pasted bank export. Understands Bank Memory's TSV
+    ("Item id, Item name, Item quantity"), Data Export's CSV, JSON lists, and plain "name, quantity" lines.
+    Duplicates are added up."""
     import csv, io
     text = (text or "").strip()
     rows = []
@@ -473,32 +479,40 @@ def parse_bank_export(text):
         delim = "\t" if "\t" in text else ("," if "," in text else ";")
         rows = [r for r in csv.reader(io.StringIO(text), delimiter=delim) if any(c.strip() for c in r)]
     if not rows:
-        return {}
+        return {}, {}
     is_num = lambda v: bool(re.fullmatch(r"-?[\d,]+", v.strip()))
     head = [c.strip().lower() for c in rows[0]]
-    name_col = qty_col = None
+    name_col = qty_col = id_col = None
     if not any(is_num(c) for c in rows[0]):   # a header row
         name_col = next((i for i, h in enumerate(head) if "name" in h), None)
         qty_col = next((i for i, h in enumerate(head) if any(w in h for w in ("quantity", "qty", "amount", "count"))), None)
+        id_col = next((i for i, h in enumerate(head) if h in ("id", "item id", "itemid", "item_id")), None)
         rows = rows[1:]
-    items = {}
+    items, ids = {}, {}
     for r in rows:
         cells = [c.strip() for c in r]
+        item_id = None
         if name_col is not None and qty_col is not None and len(cells) > max(name_col, qty_col):
             name, qty = cells[name_col], cells[qty_col]
-        else:   # no header: the text column is the name, the last number is the quantity
+            if id_col is not None and id_col < len(cells) and is_num(cells[id_col]):
+                item_id = int(cells[id_col].replace(",", ""))
+        else:   # no header: the text column is the name, the last number is the quantity (a first number: the id)
             texts = [c for c in cells if c and not is_num(c)]
             nums = [c for c in cells if is_num(c)]
             if not texts:
                 continue
             name, qty = texts[0], (nums[-1] if nums else "1")
+            if len(nums) >= 2:
+                item_id = int(nums[0].replace(",", ""))
         try:
             n = int(qty.replace(",", ""))
         except ValueError:
             continue
         if name and n > 0 and name.lower() not in ("bank filler", "null"):
             items[name] = items.get(name, 0) + n
-    return items
+            if item_id:
+                ids[name] = item_id
+    return items, ids
 
 
 # Wise Old Man chat history: the 10 most recent conversations, kept on this PC only
@@ -849,9 +863,9 @@ def parse_recommended_gear(rows):
         for slot in GEAR_SLOTS:
             tiers = [t for t in (eq.get(slot) or []) if isinstance(t, str) and "[[" in t]
             if tiers:
-                best, budget = parse_gear_option(tiers[0]), parse_gear_option(tiers[-1])
-                if best:
-                    slots[slot] = {"best": best, "budget": budget if len(tiers) > 1 else []}
+                parsed = [parse_gear_option(t) for t in tiers]
+                if parsed[0]:
+                    slots[slot] = {"best": parsed[0], "budget": parsed[-1] if len(parsed) > 1 else [], "tiers": parsed}
         if slots:
             out.append({"style": str(j.get("style") or f"Setup {len(out) + 1}").strip()[:40], "slots": slots})
     return out
@@ -1658,6 +1672,9 @@ class Api:
         if ctx_sel:
             looking_at.append(f"They highlighted this text{' on that page' if ctx_page else ''} and are asking about it:\n"
                               f"«{ctx_sel}»")
+        bank_line = self._bank_context([p["text"] for p in pages] + [question, ctx_sel or ""])
+        if bank_line:
+            looking_at.append(bank_line)
         prompt = (f"Wiki pages for this question:\n\n{context}\n\n---\n\n" if context
                   else "(No matching wiki pages were found.)\n\n")
         if looking_at:
@@ -2212,14 +2229,14 @@ class Api:
 
     def import_bank(self, rsn, text):
         rsn = (rsn or "").strip()[:12]
-        items = parse_bank_export(text)
+        items, ids = parse_bank_rows(text)
         if not rsn:
             return {"error": "Look up your account first."}
         if not items:
             return {"error": "That doesn't look like a bank export. In RuneLite, use Bank Memory's “Copy item data to clipboard”, then paste it here."}
         with self._bank_lock:
             banks = self._read_banks()
-            banks[rsn.lower()] = {"rsn": rsn, "updated": time.time(), "items": items}
+            banks[rsn.lower()] = {"rsn": rsn, "updated": time.time(), "items": items, "ids": ids}
             try:
                 os.makedirs(CONFIG_DIR, exist_ok=True)
                 with open(BANK_FILE + ".tmp", "w", encoding="utf-8") as f:
@@ -2252,8 +2269,9 @@ class Api:
         return {"rsn": b.get("rsn") or rsn, "imported": True, "updated": b.get("updated"),
                 "different": len(items), "total": sum(items.values())}
 
-    def bank_has(self, names):
-        """Quantities in your (the "This is me" account's) bank for these item names; None if no bank imported."""
+    def bank_has(self, names, generic=False):
+        """Quantities in your (the "This is me" account's) bank for these item names; None if no bank imported.
+        generic: a name like "Pickaxe" also counts every "... pickaxe" (quest item lists say "a pickaxe")."""
         b = self._banks().get((self._cfg.get("me") or "").strip().lower())
         if not b:
             return None
@@ -2261,7 +2279,100 @@ class Api:
         for name, qty in (b.get("items") or {}).items():
             k = item_key(name)
             have[k] = have.get(k, 0) + qty
-        return {n: have.get(item_key(n), 0) for n in (names or [])[:200] if isinstance(n, str)}
+        def count(n):
+            k = item_key(n)
+            if have.get(k) or not generic:
+                return have.get(k, 0)
+            return sum(q for name, q in have.items() if name.endswith(" " + k))
+        return {n: count(n) for n in (names or [])[:200] if isinstance(n, str)}
+
+    def _my_bank(self):
+        return self._banks().get((self._cfg.get("me") or "").strip().lower())
+
+    def _ge_price(self, name=None, item_id=None, latest=None):
+        """Mid GE price (average of the latest buy and sell), or None for untradeable items."""
+        try:
+            if item_id is None:
+                item = self._items().get((name or "").lower())
+                item_id = item and item["id"]
+            p = (latest or {}).get(str(item_id)) if item_id else None
+        except Exception:
+            return None
+        if not p:
+            return None
+        vals = [v for v in (p.get("high"), p.get("low")) if v]
+        return sum(vals) // len(vals) if vals else None
+
+    def bank_value(self):
+        """Your bank's GE value and its 10 most valuable stacks (one request for all prices)."""
+        b = self._my_bank()
+        if not b:
+            return {"imported": False}
+        try:
+            latest = self._get_timed(f"{PRICES}/latest", 600)["data"]
+        except Exception:
+            return {"imported": True, "error": "Couldn't reach the GE prices right now."}
+        ids = b.get("ids") or {}
+        total, rows = 0, []
+        for name, qty in (b.get("items") or {}).items():
+            low = name.lower()
+            each = 1 if low == "coins" else 1000 if low == "platinum token" else self._ge_price(name, ids.get(name), latest)
+            if each:
+                total += each * qty
+                rows.append({"name": name, "qty": qty, "value": each * qty})
+        rows.sort(key=lambda r: -r["value"])
+        return {"imported": True, "total": total, "top": rows[:10], "priced": len(rows)}
+
+    def gear_upgrades(self, title):
+        """Per setup and slot: what you own from the strategy guide's list, and the next better tier you don't,
+        with GE prices. Needs an imported bank."""
+        b = self._my_bank()
+        setups = self.recommended_gear(title)
+        if not b or not setups:
+            return None
+        have = {}
+        for name, qty in (b.get("items") or {}).items():
+            have[item_key(name)] = have.get(item_key(name), 0) + qty
+        try:
+            latest = self._get_timed(f"{PRICES}/latest", 600)["data"]
+        except Exception:
+            latest = {}
+        out = []
+        for setup in setups:
+            ups = []
+            for slot, v in setup["slots"].items():
+                tiers = v.get("tiers") or [v["best"]]
+                owned_at = next((i for i, t in enumerate(tiers) if any(have.get(item_key(x["name"])) for x in t)), None)
+                if owned_at == 0:
+                    continue   # you already own a best pick
+                target = tiers[owned_at - 1] if owned_at else tiers[-1]   # one step up, or the budget pick
+                owned_name = next((x["name"] for x in tiers[owned_at] if have.get(item_key(x["name"]))), None) if owned_at else None
+                ups.append({"slot": slot, "have": owned_name,
+                            "next": [dict(x, price=self._ge_price(x["name"], None, latest)) for x in target]})
+            # "cheapest upgrade" = improving something you already wear (an empty slot's budget pick isn't an upgrade)
+            priced = [(x["price"], u["slot"], x["name"]) for u in ups if u["have"] for x in u["next"] if x.get("price")]
+            out.append({"style": setup["style"], "upgrades": ups,
+                        "cheapest": min(priced) if priced else None})
+        return out
+
+    def _bank_context(self, texts):
+        """For the Wise Old Man: items in your bank that the wiki pages (or the question) mention."""
+        b = self._my_bank()
+        if not b:
+            return ""
+        blob = " ".join(texts).lower()
+        found = []
+        for name, qty in (b.get("items") or {}).items():
+            low = name.lower()
+            if len(low) > 3 and low not in ("coins",) and re.search(r"(?<![a-z])" + re.escape(low) + r"(?![a-z])", blob):
+                found.append(f"{name} x{qty}" if qty > 1 else name)
+        coins = (b.get("items") or {}).get("Coins", 0)
+        if not found and not coins:
+            return ""
+        age = max(0, int((time.time() - (b.get("updated") or time.time())) // 86400))
+        line = (f"From the player's bank (imported {age} day{'s' if age != 1 else ''} ago), items these pages mention: "
+                + (", ".join(found[:60]) if found else "none") + (f". Coins: {coins:,}." if coins else "."))
+        return line + " Prefer advice that uses what they already own, and say what they'd still need to get."
 
     def is_item_page(self, title):
         """Is this wiki page an item? (So item pages can say "not in your bank".)"""

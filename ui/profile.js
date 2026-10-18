@@ -143,13 +143,26 @@ async function renderBank(p) {
   if (!box.isConnected || (!isMe && !info.imported)) { box.innerHTML = ''; return; }
   box.innerHTML = `<h2 class="home-h">Bank</h2><div class="c-card bank-card">` + (info.imported
     ? `<div><b>${fmt(info.different)}</b> different items <span class="dim">· imported ${timeAgo(info.updated * 1000)}</span>
+        <div id="bankValue" class="bank-value"></div>
         <p class="dim">Item pages show how many you have, boss pages tick the recommended gear you own.</p></div>
         <div class="bank-actions"><button class="btn small" id="bankImport">Update</button><button class="linkbtn" id="bankClear">Remove</button></div>`
     : `<div><b>Import your bank</b><p class="dim">Then item pages show how many you have, and boss pages tick the recommended gear you own. It stays on this PC.</p></div>
         <div class="bank-actions"><button class="btn small" id="bankImport">Import bank</button></div>`) + `</div>`;
   $('bankImport').onclick = () => openBankImport(p);
+  if (info.imported && isMe) renderBankValue();
   const clear = $('bankClear');
   if (clear) clear.onclick = async () => { await api.clear_bank(p.name); renderBank(p); toast('Bank removed from this PC.'); };
+}
+
+async function renderBankValue() {
+  const box = $('bankValue');
+  if (!box) return;
+  const v = await api.bank_value();
+  if (!box.isConnected || !v || !v.imported) return;
+  if (v.error) { box.innerHTML = `<span class="dim">${escapeHtml(v.error)}</span>`; return; }
+  box.innerHTML = `Worth about <b>${fmtShort(v.total)}</b> on the Grand Exchange` +
+    (v.top.length ? `<details><summary>Most valuable</summary><ol>${v.top.map((r) =>
+      `<li><a href="${wikiHref(r.name)}">${escapeHtml(r.name)}</a>${r.qty > 1 ? ` <span class="dim">x${fmt(r.qty)}</span>` : ''}<b>${fmtShort(r.value)}</b></li>`).join('')}</ol></details>` : '');
 }
 
 function openBankImport(p) {
@@ -209,8 +222,29 @@ window.showInBank = async function (title) {
   if (after) after.after(box); else article.prepend(box);
 };
 
+// quest pages: tick the required / recommended items you have enough of ("3/8" if you have some)
+async function markQuestItems(title) {
+  const rows = [...els.article.querySelectorAll('table.questdetails tr')].filter((tr) => /items required|recommended/i.test((tr.querySelector('th') || {}).textContent || ''));
+  const links = rows.flatMap((tr) => [...tr.querySelectorAll('td a[href^="/w/"][title]')]).filter((a) => !a.querySelector('img'));
+  const names = [...new Set(links.map((a) => a.getAttribute('title')))].slice(0, 200);
+  if (!names.length) return;
+  const owned = await api.bank_has(names, true);
+  if (!owned || nav.stack[nav.idx].title !== title) return;
+  links.forEach((a) => {
+    const have = owned[a.getAttribute('title')] || 0;
+    if (!have || a.dataset.bank) return;
+    const li = a.closest('li');
+    const m = li && li.textContent.match(/^\s*(?:at least\s+)?([\d,]+)\s/i);
+    const need = m ? +m[1].replace(/,/g, '') : 1;
+    a.dataset.bank = '1';
+    if (have >= need) { a.classList.add('own'); a.insertAdjacentHTML('beforeend', svgIcon('i-check')); a.title = `${a.getAttribute('title')} (you have ${fmt(have)})`; }
+    else a.insertAdjacentHTML('afterend', ` <span class="bank-some">${fmt(have)}/${fmt(need)}</span>`);
+  });
+}
+
 // strategy guides: tick the gear in their equipment tables that's in your bank (a local lookup, no wiki requests)
 window.markOwnedLinks = async function (title) {
+  if (state.me && els.article.querySelector('table.questdetails')) markQuestItems(title);
   if (!state.me || !/\/Strategies$/.test(title)) return;
   const links = [...els.article.querySelectorAll('table a[href^="/w/"][title]')].filter((a) => !a.querySelector('img'));
   const names = [...new Set(links.map((a) => a.getAttribute('title')))].slice(0, 300);
@@ -244,10 +278,21 @@ window.showGear = async function (title) {
   const own = (it) => !!(owned && owned[it.name]);
   const item = (it) => `<a href="${wikiHref(it.name)}" class="${own(it) ? 'own' : ''}" title="${escapeHtml(it.name)}${own(it) ? ' (in your bank)' : ''}"><img src="${itemIcon(it.file)}" data-stack="${escapeHtml(itemIcon(it.name + ' 5.png'))}" alt="" loading="lazy">${escapeHtml(it.name)}${own(it) ? svgIcon('i-check') : ''}</a>`;
   const ownCount = (i) => { const sl = Object.values(setups[i].slots); return [sl.filter((v) => v.best.some(own)).length, sl.length]; };
+  const ups = owned ? await api.gear_upgrades(title) : null;
+  const gp = (n) => (n == null ? '<span class="dim">untradeable</span>' : `${fmtShort(n)}`);
+  const upgradesHtml = (i) => {
+    const u = ups && ups[i];
+    if (!u || !u.upgrades.length) return owned ? '<div class="gear-ups done">You own a best pick in every slot of this setup.</div>' : '';
+    const cheap = u.cheapest ? `<div class="gear-cheap">Cheapest upgrade: <b>${escapeHtml(u.cheapest[2])}</b> for your ${SLOT_NAMES[u.cheapest[1]] || u.cheapest[1]}, about <b>${fmtShort(u.cheapest[0])}</b></div>` : '';
+    return `<div class="gear-ups"><div class="gear-h">Your next upgrades</div>${cheap}` + u.upgrades.map((x) => `<div class="gear-up">
+        <span class="gear-slot">${SLOT_NAMES[x.slot] || x.slot}</span>
+        <span>${x.have ? `<span class="dim">${escapeHtml(x.have)} →</span> ` : '<span class="dim">nothing yet →</span> '}${x.next.slice(0, 2).map((n) => `${item(n)} <span class="gear-price">${gp(n.price)}</span>`).join('<span class="dim"> or </span>')}</span></div>`).join('') + `</div>`;
+  };
   const opts = (list) => (list.length ? list.slice(0, 2).map(item).join('<span class="dim"> or </span>') : '<span class="dim">–</span>');
   const panel = (i) => (owned ? `<div class="gear-own">You own ${ownCount(i)[0]} of the ${ownCount(i)[1]} best picks for this setup.</div>` : '') +
     `<div class="gear-grid"><span class="gear-h"></span><span class="gear-h">Best</span><span class="gear-h">Budget</span>` +
-    Object.entries(setups[i].slots).map(([slot, v]) => `<span class="gear-slot">${SLOT_NAMES[slot] || slot}</span><span>${opts(v.best)}</span><span>${opts(v.budget)}</span>`).join('') + `</div>`;
+    Object.entries(setups[i].slots).map(([slot, v]) => `<span class="gear-slot">${SLOT_NAMES[slot] || slot}</span><span>${opts(v.best)}</span><span>${opts(v.budget)}</span>`).join('') + `</div>` +
+    upgradesHtml(i);
   const box = document.createElement('details');
   box.className = 'gear';
   box.open = true;
@@ -266,7 +311,7 @@ window.showGear = async function (title) {
     fixIcons();
   };
   // stackable items (bolts, darts...) are pictured as a stack: "Ruby bolts (e) 5.png"; otherwise drop the icon
-  const fixIcons = () => box.querySelectorAll('.gear-grid img').forEach((img) => {
+  const fixIcons = () => box.querySelectorAll('.gear-grid img, .gear-ups img').forEach((img) => {
     img.onerror = () => { if (img.dataset.stack) { img.src = img.dataset.stack; img.dataset.stack = ''; } else img.remove(); };
   });
   fixIcons();

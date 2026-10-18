@@ -89,11 +89,14 @@ const API = {
   },
   clear_bank: async (rsn) => { window.__BANK = null; return { rsn, imported: false }; },
   bank_info: async (rsn) => (window.__BANK ? { rsn, imported: true, updated: Date.now() / 1000, different: Object.keys(window.__BANK).length } : { rsn, imported: false }),
-  bank_has: async (names) => {
+  bank_has: async (names, generic) => {
     if (!window.__BANK) return null;
     const have = Object.fromEntries(Object.entries(window.__BANK).map(([k, v]) => [k.toLowerCase(), v]));
-    return Object.fromEntries(names.map((n) => [n, have[n.toLowerCase()] || 0]));
+    const count = (n) => have[n.toLowerCase()] || (generic ? Object.entries(have).filter(([k]) => k.endsWith(' ' + n.toLowerCase())).reduce((t, [, v]) => t + v, 0) : 0);
+    return Object.fromEntries(names.map((n) => [n, count(n)]));
   },
+  bank_value: async () => (window.__BANK ? clone(window.__PROFILE.bankValue) : { imported: false }),
+  gear_upgrades: async (t) => (window.__BANK ? clone(((window.__PROFILE.upgrades || {})[t]) || null) : null),
   clipboard_text: async () => window.__CLIP || '',
   is_item_page: async (t) => t === 'Abyssal whip',
   rare_drops: async (t) => clone(((window.__PROFILE.drops || {})[t]) || []),

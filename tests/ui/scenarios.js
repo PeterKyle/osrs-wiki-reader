@@ -129,21 +129,28 @@ const S = {
     }
     await openCharacter('Clyde Lives'); await wait(1200);
     const before = ($id('pxBank').textContent || '').includes('Import your bank');
-    window.__CLIP = 'Item id\tItem name\tItem quantity\n4151\tAbyssal whip\t1\n21012\tDragon hunter crossbow\t1\n27235\tMasori mask (f)\t1\n995\tCoins\t5000000\n';
+    window.__CLIP = 'Item id\tItem name\tItem quantity\n4151\tAbyssal whip\t1\n21012\tDragon hunter crossbow\t1\n27235\tMasori mask (f)\t1\n995\tCoins\t5000000\n1275\tRune pickaxe\t1\n6739\tDragon axe\t1\n8778\tOak plank\t3\n';
     $id('bankImport').click(); await wait(300);
     $id('bankPaste').click(); await wait(600);
+    await wait(400);
     const card = ($id('pxBank').querySelector('.bank-card') || {}).textContent || '';
+    const value = (($id('bankValue') || {}).textContent || '').split('Most valuable')[0].replace(/\s+/g, ' ').trim();
     await openPage('Abyssal whip'); await wait(900);
     const inbank = (els.article.querySelector('.inbank') || {}).textContent || '';
     await openPage('Vorkath'); await wait(1000);
     const gear = els.article.querySelector('.gear');
     return {
-      importPromptFirst: before, card: card.replace(/\s+/g, ' ').includes('4 different items'), inbank: inbank.trim(),
+      importPromptFirst: before, card: card.replace(/\s+/g, ' ').includes('7 different items'), inbank: inbank.trim(), value,
+      cheapest: gear ? ((gear.querySelector('.gear-cheap') || {}).textContent || '').replace(/\s+/g, ' ').trim() : null,
       gearTabs: gear ? gear.querySelectorAll('.gear-tabs button').length : 0,
       owned: gear ? (gear.querySelector('.gear-own') || {}).textContent : null,
       ownedLinks: gear ? [...gear.querySelectorAll('a.own')].map((a) => a.textContent.trim()) : [],
       guideTicks: await (async () => { await openPage('Vorkath/Strategies'); await wait(900);
         return [...new Set([...els.article.querySelectorAll('table a.own')].map((a) => a.textContent.trim()))]; })(),
+      questItems: await (async () => { await openPage('Dragon Slayer II'); await wait(900);
+        const rows = [...els.article.querySelectorAll('table.questdetails a.own')].map((a) => a.textContent.trim());
+        const some = [...els.article.querySelectorAll('table.questdetails .bank-some')].map((x) => x.textContent.trim());
+        return { ticked: rows, some }; })(),
     };
   },
   async pets() {
