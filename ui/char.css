@@ -335,3 +335,38 @@
 .pets .goal { grid-template-columns: 0 minmax(300px, 1.6fr) 1fr 44px 0; }
 .pets .goal .gv { text-align: right; }
 .pets .goal .gn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* recommended gear on boss pages */
+.gear { margin: 0 0 18px; padding: 10px 14px 12px; border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; }
+.gear summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.gear summary .dim { font-weight: 400; }
+.gear-tabs { margin: 10px 0 6px; }
+.gear-style { margin: 6px 0 4px; font-size: 12px; }
+.gear-grid { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 3px 14px; align-items: center; margin-top: 6px; }
+.gear-h { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
+.gear-slot { color: var(--text-3); font-size: 12px; }
+.gear-grid a { display: inline-flex; align-items: center; gap: 6px; color: var(--link); text-decoration: none; min-width: 0; }
+.gear-grid a:hover { text-decoration: underline; }
+.gear-grid img { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.gear-more { margin-top: 10px; font-size: 12.5px; }
+
+/* bank */
+.bank-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13.5px; }
+.bank-card b { color: var(--text); }
+.bank-card p { margin: 4px 0 0; font-size: 12.5px; }
+.bank-actions { display: flex; align-items: center; gap: 12px; }
+.modal.bank-modal { width: min(520px, 100%); align-items: stretch; text-align: left; }
+.modal.bank-modal h2 { margin-top: 0; }
+.bank-steps { margin: 8px 0 12px; padding-left: 1.3em; font-size: 13.5px; line-height: 1.6; color: var(--text-2); }
+.bank-steps b { color: var(--text); }
+.bank-modal textarea { width: 100%; resize: vertical; padding: 10px 12px; font: 12px/1.5 ui-monospace, Consolas, monospace; border-radius: var(--r-md); }
+.bank-note { margin: 10px 0 0; font-size: 12px; text-align: center; }
+.inbank { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px; padding: 6px 12px; border-radius: var(--r-full);
+  background: var(--fill); font-size: 13px; color: var(--text-3); }
+.inbank.yes { color: var(--success); background: rgba(80, 170, 100, .12); }
+.inbank b { color: var(--text); }
+.inbank .ic { width: 14px; height: 14px; stroke-width: 2.4; }
+.gear-grid a.own { color: var(--success); }
+.gear-grid a.own .ic { width: 13px; height: 13px; stroke-width: 2.6; }
+.gear-own { margin: 4px 0 2px; font-size: 12.5px; color: var(--text-2); }
+.loot-own { margin-left: 4px; padding: 0 6px; border-radius: var(--r-full); font-size: 11px; color: var(--success); background: rgba(80, 170, 100, .14); }

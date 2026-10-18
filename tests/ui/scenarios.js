@@ -121,6 +121,31 @@ const S = {
     const q = (s) => (box.querySelector(s) || {}).textContent || '';
     return { since: q('.since'), unlocked: q('.ca-top b'), next: q('.ca-next .dim').replace(/\s+/g, ' ').trim(), tiers: box.querySelectorAll('.ca-tiers .goal').length };
   },
+  async bank() {
+    state.me = 'Clyde Lives';
+    for (const m of ['save_account', 'set_me']) {   // the fake backend's saved state names another account as "you"
+      const real = api[m];
+      api[m] = async (...args) => ({ ...(await real(...args)), me: 'Clyde Lives' });
+    }
+    await openCharacter('Clyde Lives'); await wait(1200);
+    const before = ($id('pxBank').textContent || '').includes('Import your bank');
+    window.__CLIP = 'Item id\tItem name\tItem quantity\n4151\tAbyssal whip\t1\n21012\tDragon hunter crossbow\t1\n27235\tMasori mask (f)\t1\n995\tCoins\t5000000\n';
+    $id('bankImport').click(); await wait(300);
+    $id('bankPaste').click(); await wait(600);
+    const card = ($id('pxBank').querySelector('.bank-card') || {}).textContent || '';
+    await openPage('Abyssal whip'); await wait(900);
+    const inbank = (els.article.querySelector('.inbank') || {}).textContent || '';
+    await openPage('Vorkath'); await wait(1000);
+    const gear = els.article.querySelector('.gear');
+    return {
+      importPromptFirst: before, card: card.replace(/\s+/g, ' ').includes('4 different items'), inbank: inbank.trim(),
+      gearTabs: gear ? gear.querySelectorAll('.gear-tabs button').length : 0,
+      owned: gear ? (gear.querySelector('.gear-own') || {}).textContent : null,
+      ownedLinks: gear ? [...gear.querySelectorAll('a.own')].map((a) => a.textContent.trim()) : [],
+      guideTicks: await (async () => { await openPage('Vorkath/Strategies'); await wait(900);
+        return [...new Set([...els.article.querySelectorAll('table a.own')].map((a) => a.textContent.trim()))]; })(),
+    };
+  },
   async pets() {
     await openCharacter('Clyde Lives'); await wait(1500);
     const box = $id('pxPets'); box.scrollIntoView(); els.scroller.scrollTop -= 80; await wait(300);

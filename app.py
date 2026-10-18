@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.5.5"
+VERSION = "1.6.0"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -441,6 +441,66 @@ def load_config():
     return cfg
 
 
+# Imported banks (RuneLite Bank Memory / Data Export plugins), kept on this PC only
+BANK_FILE = os.path.join(CONFIG_DIR, "bank.json")
+CHARGE_SUFFIX = re.compile(r"\s*\((?:empty|uncharged|charged|full|inactive|broken|used|deg|degraded|\d+)\)\s*$", re.I)
+
+
+def item_key(name):
+    """How bank and wiki item names are compared: case-insensitive, ignoring charge states like (empty) or (4)."""
+    return CHARGE_SUFFIX.sub("", re.sub(r"\s+", " ", str(name or "")).strip()).lower()
+
+
+def parse_bank_export(text):
+    """{item name: quantity} from a pasted bank export. Understands Bank Memory's TSV ("Item id, Item name,
+    Item quantity"), Data Export's CSV, JSON lists, and plain "name, quantity" lines. Duplicates are added up."""
+    import csv, io
+    text = (text or "").strip()
+    rows = []
+    if text[:1] in "[{":
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                data = data.get("items") or data.get("bank") or list(data.values())
+            for it in data if isinstance(data, list) else []:
+                if isinstance(it, dict):
+                    name = it.get("name") or it.get("itemName") or it.get("item_name")
+                    qty = it.get("quantity", it.get("qty", it.get("amount", it.get("count", 1))))
+                    rows.append([str(name or ""), str(qty)])
+        except ValueError:
+            rows = []
+    else:
+        delim = "\t" if "\t" in text else ("," if "," in text else ";")
+        rows = [r for r in csv.reader(io.StringIO(text), delimiter=delim) if any(c.strip() for c in r)]
+    if not rows:
+        return {}
+    is_num = lambda v: bool(re.fullmatch(r"-?[\d,]+", v.strip()))
+    head = [c.strip().lower() for c in rows[0]]
+    name_col = qty_col = None
+    if not any(is_num(c) for c in rows[0]):   # a header row
+        name_col = next((i for i, h in enumerate(head) if "name" in h), None)
+        qty_col = next((i for i, h in enumerate(head) if any(w in h for w in ("quantity", "qty", "amount", "count"))), None)
+        rows = rows[1:]
+    items = {}
+    for r in rows:
+        cells = [c.strip() for c in r]
+        if name_col is not None and qty_col is not None and len(cells) > max(name_col, qty_col):
+            name, qty = cells[name_col], cells[qty_col]
+        else:   # no header: the text column is the name, the last number is the quantity
+            texts = [c for c in cells if c and not is_num(c)]
+            nums = [c for c in cells if is_num(c)]
+            if not texts:
+                continue
+            name, qty = texts[0], (nums[-1] if nums else "1")
+        try:
+            n = int(qty.replace(",", ""))
+        except ValueError:
+            continue
+        if name and n > 0 and name.lower() not in ("bank filler", "null"):
+            items[name] = items.get(name, 0) + n
+    return items
+
+
 # Wise Old Man chat history: the 10 most recent conversations, kept on this PC only
 CHATS_FILE = os.path.join(CONFIG_DIR, "chats.json")
 MAX_CHATS = 10
@@ -765,6 +825,38 @@ def parse_ca_thresholds(page_html):
     return out
 
 
+GEAR_SLOTS = ("head", "cape", "neck", "ammo", "weapon", "body", "shield", "legs", "hands", "feet", "ring", "special")
+
+
+def parse_gear_option(markup):
+    """One tier of a recommended-equipment slot: [{name, file}] (several when it says "A / B")."""
+    files = re.findall(r"\[\[File:([^\]|]+)", markup or "")
+    names = re.findall(r"\[\[(?!File:)([^\]|#]+)", markup or "")
+    return [{"name": n.strip(), "file": (files[i] if i < len(files) else n.strip() + ".png").strip()}
+            for i, n in enumerate(names)][:3]
+
+
+def parse_recommended_gear(rows):
+    """Setups from a strategy page: [{style, slots: {slot: {best: [...], budget: [...]}}}]."""
+    out = []
+    for r in rows or []:
+        try:
+            j = json.loads(r["json"]) if isinstance(r.get("json"), str) else (r.get("json") or {})
+        except ValueError:
+            continue
+        eq = j.get("Recommended Equipment") or {}
+        slots = {}
+        for slot in GEAR_SLOTS:
+            tiers = [t for t in (eq.get(slot) or []) if isinstance(t, str) and "[[" in t]
+            if tiers:
+                best, budget = parse_gear_option(tiers[0]), parse_gear_option(tiers[-1])
+                if best:
+                    slots[slot] = {"best": best, "budget": budget if len(tiers) > 1 else []}
+        if slots:
+            out.append({"style": str(j.get("style") or f"Setup {len(out) + 1}").strip()[:40], "slots": slots})
+    return out
+
+
 def _strip_wikitext(text):
     text = re.sub(r"<ref[^>]*?/>|<ref.*?</ref>", "", text, flags=re.S)
     text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", text)          # [[page|label]] -> label
@@ -849,6 +941,10 @@ class Api:
         self._extras, self._gim, self._img, self._update = {}, {}, {}, None
         self._day = {}   # name -> (fetched at, data) for _daily()
         self._reqs = {}
+        self._gear = {}
+        self._items = {}
+        self._bank_lock = threading.Lock()
+        self._bank_cache = None
 
         self._notifier = None
         self._mini = False
@@ -1910,6 +2006,27 @@ class Api:
         drops = [{"item": k, "p": v, "rate": f"1/{round(1 / v):,}"} for k, v in items.items() if k.lower() not in pets]
         return sorted(drops, key=lambda x: -x["p"])[:8]
 
+    # ---- boss pages: recommended gear from the wiki's strategy guide ----
+    def recommended_gear(self, title):
+        title = (title or "").strip()[:240]
+        if not title or title.endswith("/Strategies"):
+            return []
+        with self._mem_lock:
+            hit = self._gear.get(title)
+        if hit is not None:
+            return hit
+        esc = (title + "/Strategies").replace("\\", "\\\\").replace("'", "\\'")
+        try:
+            setups = parse_recommended_gear(self._bucket(
+                f"bucket('recommended_equipment').select('page_name','json').where('page_name','{esc}').limit(10).run()"))
+        except Exception:
+            return []
+        with self._mem_lock:
+            self._gear[title] = setups
+            if len(self._gear) > 100:
+                self._gear.pop(next(iter(self._gear)))
+        return setups
+
     # ---- article pages: what you need for this monster / spell ----
     def page_requirements(self, title):
         """Slayer level (and who assigns it) for monsters, Magic level and spellbook for spells. {} if neither."""
@@ -2052,6 +2169,118 @@ class Api:
             return {"ok": True}
         except Exception as e:
             return {"error": f"Couldn't copy the picture ({e.__class__.__name__})."}
+
+    # ---- imported bank (stays on this PC) ----
+    def _read_banks(self):
+        try:
+            with open(BANK_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _banks(self):
+        with self._bank_lock:
+            if self._bank_cache is None:
+                self._bank_cache = self._read_banks()
+            return self._bank_cache
+
+    def clipboard_text(self):
+        """The text on the Windows clipboard (for "Paste from clipboard")."""
+        k32, u32c = ctypes.WinDLL("kernel32"), ctypes.WinDLL("user32")
+        u32c.GetClipboardData.restype = ctypes.c_void_p
+        k32.GlobalLock.restype = ctypes.c_void_p
+        k32.GlobalLock.argtypes = [ctypes.c_void_p]
+        k32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+        for _ in range(10):
+            if u32c.OpenClipboard(None):
+                break
+            time.sleep(0.05)
+        else:
+            return ""
+        try:
+            h = u32c.GetClipboardData(13)   # CF_UNICODETEXT
+            if not h:
+                return ""
+            ptr = k32.GlobalLock(h)
+            try:
+                return ctypes.wstring_at(ptr)[:2_000_000] if ptr else ""
+            finally:
+                k32.GlobalUnlock(h)
+        finally:
+            u32c.CloseClipboard()
+
+    def import_bank(self, rsn, text):
+        rsn = (rsn or "").strip()[:12]
+        items = parse_bank_export(text)
+        if not rsn:
+            return {"error": "Look up your account first."}
+        if not items:
+            return {"error": "That doesn't look like a bank export. In RuneLite, use Bank Memory's “Copy item data to clipboard”, then paste it here."}
+        with self._bank_lock:
+            banks = self._read_banks()
+            banks[rsn.lower()] = {"rsn": rsn, "updated": time.time(), "items": items}
+            try:
+                os.makedirs(CONFIG_DIR, exist_ok=True)
+                with open(BANK_FILE + ".tmp", "w", encoding="utf-8") as f:
+                    json.dump(banks, f, ensure_ascii=False)
+                os.replace(BANK_FILE + ".tmp", BANK_FILE)
+            except OSError as e:
+                return {"error": f"Couldn't save the bank ({e.__class__.__name__})."}
+            self._bank_cache = banks
+        return self.bank_info(rsn)
+
+    def clear_bank(self, rsn):
+        with self._bank_lock:
+            banks = self._read_banks()
+            banks.pop((rsn or "").strip().lower(), None)
+            try:
+                with open(BANK_FILE + ".tmp", "w", encoding="utf-8") as f:
+                    json.dump(banks, f, ensure_ascii=False)
+                os.replace(BANK_FILE + ".tmp", BANK_FILE)
+            except OSError:
+                pass
+            self._bank_cache = banks
+        return self.bank_info(rsn)
+
+    def bank_info(self, rsn=None):
+        rsn = (rsn or self._cfg.get("me") or "").strip()
+        b = self._banks().get(rsn.lower())
+        if not b:
+            return {"rsn": rsn, "imported": False}
+        items = b.get("items") or {}
+        return {"rsn": b.get("rsn") or rsn, "imported": True, "updated": b.get("updated"),
+                "different": len(items), "total": sum(items.values())}
+
+    def bank_has(self, names):
+        """Quantities in your (the "This is me" account's) bank for these item names; None if no bank imported."""
+        b = self._banks().get((self._cfg.get("me") or "").strip().lower())
+        if not b:
+            return None
+        have = {}
+        for name, qty in (b.get("items") or {}).items():
+            k = item_key(name)
+            have[k] = have.get(k, 0) + qty
+        return {n: have.get(item_key(n), 0) for n in (names or [])[:200] if isinstance(n, str)}
+
+    def is_item_page(self, title):
+        """Is this wiki page an item? (So item pages can say "not in your bank".)"""
+        title = (title or "").strip()[:250]
+        with self._mem_lock:
+            hit = self._items.get(title)
+        if hit is not None:
+            return hit
+        esc = title.replace("\\", "\\\\").replace("'", "\\'")
+        try:
+            rows = self._bucket(f"bucket('infobox_item').select('page_name').where('page_name','{esc}').limit(1).run()")
+            hit = bool(rows)
+        except Exception:
+            return False
+        with self._mem_lock:
+            self._items[title] = hit
+            if len(self._items) > 300:
+                self._items.pop(next(iter(self._items)))
+        return hit
 
     # ---- Wise Old Man chat history (last MAX_CHATS conversations) ----
     def _read_chats(self):

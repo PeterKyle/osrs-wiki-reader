@@ -193,3 +193,7 @@
 /* quest checklists */
 .wiki .checklist ul { list-style: none; padding-left: 1.1em; }
 .wiki .checklist li::before { content: "○"; margin-right: 8px; color: var(--text-3); }
+
+/* strategy guides: gear that's in your imported bank */
+.wiki table a.own { color: var(--success); }
+.wiki table a.own .ic { width: 12px; height: 12px; margin-left: 3px; vertical-align: -1px; stroke-width: 2.6; }

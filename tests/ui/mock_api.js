@@ -78,6 +78,24 @@ const API = {
   latest_update: async () => clone(window.__PROFILE.update),
   pet_rates: async () => clone(window.__PROFILE.pets),
   ca_data: async () => clone(window.__PROFILE.ca),
+  recommended_gear: async (t) => clone(((window.__PROFILE.gear || {})[t]) || []),
+  // an in-memory bank (the real one parses Bank Memory's TSV in app.py; tests/test_bank.py covers that)
+  import_bank: async (rsn, text) => {
+    const items = {};
+    String(text).split(/\r?\n/).slice(1).forEach((l) => { const c = l.split('\t'); if (c.length >= 3) items[c[1]] = (items[c[1]] || 0) + +c[2]; });
+    if (!Object.keys(items).length) return { error: "That doesn't look like a bank export." };
+    window.__BANK = items;
+    return { rsn, imported: true, updated: Date.now() / 1000, different: Object.keys(items).length, total: Object.values(items).reduce((a, b) => a + b, 0) };
+  },
+  clear_bank: async (rsn) => { window.__BANK = null; return { rsn, imported: false }; },
+  bank_info: async (rsn) => (window.__BANK ? { rsn, imported: true, updated: Date.now() / 1000, different: Object.keys(window.__BANK).length } : { rsn, imported: false }),
+  bank_has: async (names) => {
+    if (!window.__BANK) return null;
+    const have = Object.fromEntries(Object.entries(window.__BANK).map(([k, v]) => [k.toLowerCase(), v]));
+    return Object.fromEntries(names.map((n) => [n, have[n.toLowerCase()] || 0]));
+  },
+  clipboard_text: async () => window.__CLIP || '',
+  is_item_page: async (t) => t === 'Abyssal whip',
   rare_drops: async (t) => clone(((window.__PROFILE.drops || {})[t]) || []),
   page_requirements: async (t) => clone((window.__PROFILE.reqs || {})[t] || {}),
   set_goal: async (g) => { __st.goal = g; return state(); },

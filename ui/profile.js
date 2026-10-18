@@ -133,6 +133,147 @@ window.renderWeeklyRecap = async function () {
   $('recapOpen').onclick = () => openCharacter(p.name);
 };
 
+/* ---------------- your bank (imported from RuneLite's Bank Memory plugin; stays on this PC) ---------------- */
+
+async function renderBank(p) {
+  const box = $('pxBank');
+  if (!box) return;
+  const info = await api.bank_info(p.name);
+  const isMe = state.me && state.me.toLowerCase() === p.name.toLowerCase();
+  if (!box.isConnected || (!isMe && !info.imported)) { box.innerHTML = ''; return; }
+  box.innerHTML = `<h2 class="home-h">Bank</h2><div class="c-card bank-card">` + (info.imported
+    ? `<div><b>${fmt(info.different)}</b> different items <span class="dim">· imported ${timeAgo(info.updated * 1000)}</span>
+        <p class="dim">Item pages show how many you have, boss pages tick the recommended gear you own.</p></div>
+        <div class="bank-actions"><button class="btn small" id="bankImport">Update</button><button class="linkbtn" id="bankClear">Remove</button></div>`
+    : `<div><b>Import your bank</b><p class="dim">Then item pages show how many you have, and boss pages tick the recommended gear you own. It stays on this PC.</p></div>
+        <div class="bank-actions"><button class="btn small" id="bankImport">Import bank</button></div>`) + `</div>`;
+  $('bankImport').onclick = () => openBankImport(p);
+  const clear = $('bankClear');
+  if (clear) clear.onclick = async () => { await api.clear_bank(p.name); renderBank(p); toast('Bank removed from this PC.'); };
+}
+
+function openBankImport(p) {
+  let m = $('bankModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.className = 'modal-scrim'; m.id = 'bankModal';
+    m.innerHTML = `<div class="modal bank-modal" role="dialog" aria-modal="true" aria-labelledby="bankTitle">
+      <h2 id="bankTitle">Import your bank</h2>
+      <ol class="bank-steps">
+        <li>In RuneLite, install <b>Bank Memory</b> from the Plugin Hub (the plug icon in the sidebar).</li>
+        <li>Log in and open your bank once, so the plugin can see it.</li>
+        <li>Open the Bank Memory panel in the sidebar, right-click your bank, and pick <b>Copy item data to clipboard</b>.</li>
+        <li>Come back here and press <b>Paste from clipboard</b>.</li>
+      </ol>
+      <textarea id="bankText" rows="5" placeholder="Or paste the export here (Bank Memory or Data Export)" spellcheck="false"></textarea>
+      <p class="modal-msg" id="bankMsg"></p>
+      <div class="modal-actions"><button class="btn small" id="bankPaste">Paste from clipboard</button><button class="btn" id="bankGo">Import</button></div>
+      <p class="dim bank-note">Only item names and amounts are saved, on this PC. Re-import whenever your bank changes.</p></div>`;
+    document.body.appendChild(m);
+    m.addEventListener('mousedown', (e) => { if (e.target === m) m.hidden = true; });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !m.hidden) { e.stopPropagation(); m.hidden = true; } }, true);
+  }
+  const msg = $('bankMsg');
+  msg.textContent = ''; msg.classList.remove('err');
+  $('bankText').value = '';
+  const doImport = async (text) => {
+    msg.textContent = 'Importing…'; msg.classList.remove('err');
+    const r = await api.import_bank(p.name, text);
+    if (r.error) { msg.textContent = r.error; msg.classList.add('err'); return; }
+    m.hidden = true;
+    toast(`Bank imported: ${fmt(r.different)} different items.`);
+    renderBank(p);
+  };
+  $('bankPaste').onclick = async () => {
+    const t = await api.clipboard_text();
+    if (!t) { msg.textContent = 'The clipboard is empty. Copy the item data in Bank Memory first.'; msg.classList.add('err'); return; }
+    $('bankText').value = t.slice(0, 5000) + (t.length > 5000 ? '\n…' : '');
+    doImport(t);
+  };
+  $('bankGo').onclick = () => doImport($('bankText').value);
+  m.hidden = false;
+  $('bankPaste').focus();
+}
+
+// item pages: how many you have
+window.showInBank = async function (title) {
+  if (!state.me) return;
+  const [isItem, have] = await Promise.all([api.is_item_page(title), api.bank_has([title])]);
+  const article = els.article;
+  if (!isItem || !have || article.hidden || nav.stack[nav.idx].title !== title || article.querySelector('.inbank')) return;
+  const n = have[title] || 0;
+  const box = document.createElement('div');
+  box.className = 'inbank' + (n ? ' yes' : '');
+  box.innerHTML = n ? `${svgIcon('i-check')}In your bank: <b>${fmt(n)}</b>` : 'Not in your bank';
+  const after = article.querySelector('.mykc') || article.querySelector('h1');
+  if (after) after.after(box); else article.prepend(box);
+};
+
+// strategy guides: tick the gear in their equipment tables that's in your bank (a local lookup, no wiki requests)
+window.markOwnedLinks = async function (title) {
+  if (!state.me || !/\/Strategies$/.test(title)) return;
+  const links = [...els.article.querySelectorAll('table a[href^="/w/"][title]')].filter((a) => !a.querySelector('img'));
+  const names = [...new Set(links.map((a) => a.getAttribute('title')))].slice(0, 300);
+  if (!names.length) return;
+  const owned = await api.bank_has(names);
+  if (!owned || nav.stack[nav.idx].title !== title) return;
+  let n = 0;
+  links.forEach((a) => {
+    if (owned[a.getAttribute('title')] && !a.classList.contains('own')) {
+      a.classList.add('own');
+      a.insertAdjacentHTML('beforeend', svgIcon('i-check'));
+      a.title = a.getAttribute('title') + ' (in your bank)';
+      n++;
+    }
+  });
+  if (n) toast(`Ticked the gear in your bank on this guide.`);
+};
+
+/* ---------------- boss pages: recommended gear (best and budget per slot) ---------------- */
+
+const SLOT_NAMES = { head: 'Head', cape: 'Cape', neck: 'Neck', ammo: 'Ammo', weapon: 'Weapon', body: 'Body', shield: 'Shield',
+  legs: 'Legs', hands: 'Hands', feet: 'Feet', ring: 'Ring', special: 'Special' };
+
+window.showGear = async function (title) {
+  const setups = await api.recommended_gear(title);
+  const article = els.article;
+  if (!setups || !setups.length || article.hidden || nav.stack[nav.idx].title !== title || article.querySelector('.gear')) return;
+  // with an imported bank, tick the gear you already own
+  const names = [...new Set(setups.flatMap((s) => Object.values(s.slots).flatMap((v) => [...v.best, ...v.budget].map((x) => x.name))))];
+  const owned = (state.me && (await api.bank_has(names))) || null;
+  const own = (it) => !!(owned && owned[it.name]);
+  const item = (it) => `<a href="${wikiHref(it.name)}" class="${own(it) ? 'own' : ''}" title="${escapeHtml(it.name)}${own(it) ? ' (in your bank)' : ''}"><img src="${itemIcon(it.file)}" data-stack="${escapeHtml(itemIcon(it.name + ' 5.png'))}" alt="" loading="lazy">${escapeHtml(it.name)}${own(it) ? svgIcon('i-check') : ''}</a>`;
+  const ownCount = (i) => { const sl = Object.values(setups[i].slots); return [sl.filter((v) => v.best.some(own)).length, sl.length]; };
+  const opts = (list) => (list.length ? list.slice(0, 2).map(item).join('<span class="dim"> or </span>') : '<span class="dim">–</span>');
+  const panel = (i) => (owned ? `<div class="gear-own">You own ${ownCount(i)[0]} of the ${ownCount(i)[1]} best picks for this setup.</div>` : '') +
+    `<div class="gear-grid"><span class="gear-h"></span><span class="gear-h">Best</span><span class="gear-h">Budget</span>` +
+    Object.entries(setups[i].slots).map(([slot, v]) => `<span class="gear-slot">${SLOT_NAMES[slot] || slot}</span><span>${opts(v.best)}</span><span>${opts(v.budget)}</span>`).join('') + `</div>`;
+  const box = document.createElement('details');
+  box.className = 'gear';
+  box.open = true;
+  box.innerHTML = `<summary>Recommended gear <span class="dim">from the strategy guide</span></summary>
+    ${setups.length > 1 ? `<div class="seg gear-tabs">${setups.map((s, i) => `<button data-i="${i}" class="${i ? '' : 'on'}">${escapeHtml(s.style)}</button>`).join('')}</div>`
+      : `<div class="dim gear-style">${escapeHtml(setups[0].style)}</div>`}
+    <div class="gear-panel">${panel(0)}</div>
+    <button class="linkbtn gear-more">Full strategy guide</button>`;
+  box.querySelector('.gear-more').onclick = () => openPage(title + '/Strategies');
+  const tabs = box.querySelector('.gear-tabs');
+  if (tabs) tabs.onclick = (e) => {
+    const b = e.target.closest('button[data-i]');
+    if (!b) return;
+    tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    box.querySelector('.gear-panel').innerHTML = panel(+b.dataset.i);
+    fixIcons();
+  };
+  // stackable items (bolts, darts...) are pictured as a stack: "Ruby bolts (e) 5.png"; otherwise drop the icon
+  const fixIcons = () => box.querySelectorAll('.gear-grid img').forEach((img) => {
+    img.onerror = () => { if (img.dataset.stack) { img.src = img.dataset.stack; img.dataset.stack = ''; } else img.remove(); };
+  });
+  fixIcons();
+  const after = article.querySelector('.cando') || article.querySelector('.mykc') || article.querySelector('h1');
+  if (after) after.after(box); else article.prepend(box);
+};
+
 /* ---------------- article pages: can you kill / cast this? ---------------- */
 
 window.showCanDo = async function (title) {
@@ -534,12 +675,12 @@ function petLuckHtml(a, pet) {
 }
 
 // Expected collection log drops by your kill count: kills x chance, and the chance of having at least one
-function lootHtml(kc, drops) {
+function lootHtml(kc, drops, owned) {
   if (!drops || !drops.length || kc <= 0) return '';
   const exp = (x) => (x < 0.1 ? '<0.1' : x < 10 ? x.toFixed(1) : fmt(Math.round(x)));
   const pct = (x) => (x < 1 ? '<1%' : x > 99 ? '>99%' : `${Math.round(x)}%`);
   return `<details class="mykc-loot" open><summary>Expected loot by your ${fmt(kc)} kills</summary><div class="loot-rows">` +
-    drops.map((d) => `<div class="loot"><a href="${wikiHref(d.item)}">${escapeHtml(d.item)}</a><span class="dim">${escapeHtml(d.rate)}</span>
+    drops.map((d) => `<div class="loot"><a href="${wikiHref(d.item)}">${escapeHtml(d.item)}${owned && owned[d.item] ? ' <span class="loot-own">in bank</span>' : ''}</a><span class="dim">${escapeHtml(d.rate)}</span>
       <span><b>${exp(kc * d.p)}</b> expected</span><span class="dim">${pct((1 - Math.pow(1 - d.p, kc)) * 100)} would have one</span></div>`).join('') +
     `</div></details>`;
 }
@@ -548,6 +689,7 @@ window.showMyKc = async function (title) {
   if (!state.me) return;
   const [p, pets, drops] = await Promise.all([api.player(state.me), api.pet_rates().catch(() => ({})),
     api.rare_drops(title).catch(() => [])]);
+  const owned = drops && drops.length ? await api.bank_has(drops.map((d) => d.item)) : null;
   const petFor = Object.fromEntries(Object.entries(pets || {}).map(([k, v]) => [k.toLowerCase(), v]));
   if (!p || p.error || nav.stack[nav.idx].title !== title) return;
   const t = title.toLowerCase();
@@ -563,7 +705,7 @@ window.showMyKc = async function (title) {
     return `<span class="mykc-item">${label}<b>${fmt(a.score)}</b>${a.name.includes('Clue') || a.name.includes('Rank') || a.name.includes('Zeal') || a.name.includes('Glory') || a.name.includes('Points') || a.name.includes('Logged') || a.name.includes('Rifts') ? '' : ' kills'}
       <span class="dim">· rank #${fmt(a.rank)}</span>${g > 0 ? ` <span class="gain">+${fmt(g)} this week</span>` : ''}</span>`;
   }).join('') + hits.map((a) => (petFor[a.name.toLowerCase()] ? petLuckHtml(a, petFor[a.name.toLowerCase()]) : '')).join('') +
-    (hits.length === 1 && !KC_PAGES[hits[0].name] ? lootHtml(hits[0].score, drops) : '');   // one boss = one kill count to go on
+    (hits.length === 1 && !KC_PAGES[hits[0].name] ? lootHtml(hits[0].score, drops, owned) : '');   // one boss = one kill count to go on
   const h1 = article.querySelector('h1');
   if (h1) h1.after(box); else article.prepend(box);
 };

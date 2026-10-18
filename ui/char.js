@@ -221,7 +221,7 @@ function renderPlayer(p) {
   }
 
   // goals, XP over time, milestones & records, group (profile.js)
-  html += goalsHtml(p) + chartHtml(p) + '<div id="pxExtras"></div><div id="pxGroup"></div>';
+  html += '<div id="pxBank"></div>' + goalsHtml(p) + chartHtml(p) + '<div id="pxExtras"></div><div id="pxGroup"></div>';
 
   // quests & diaries
   html += `<h2 class="home-h">Quests &amp; diaries</h2>`;
@@ -291,6 +291,7 @@ function renderPlayer(p) {
   renderExtras(p);
   renderGroup(p);
   renderCombatAchievements(p);
+  renderBank(p);
   renderPetChances(p);
   if (p.sync) renderQuestSuggestions(p, levels);
   const track = $('btnTrack');

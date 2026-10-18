@@ -245,6 +245,9 @@ function renderArticle(res) {
   if (window.showCalculator) showCalculator(res.title);
   if (window.showMyKc) showMyKc(res.title);
   if (window.showCanDo) showCanDo(res.title);
+  if (window.showGear) showGear(res.title);
+  if (window.showInBank) showInBank(res.title);
+  if (window.markOwnedLinks) markOwnedLinks(res.title);
   if (window.updateBookmarkBtn) updateBookmarkBtn();
 }
 
