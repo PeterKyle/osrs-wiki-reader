@@ -51,8 +51,8 @@ function scrollChat() { chat.body.scrollTop = chat.body.scrollHeight; }
 function setupHtml(error = '') {
   return `
     <div class="ask-setup">
-      <h3>Ask anything about OSRS</h3>
-      <p>Answers come from Google's Gemini, using the OSRS Wiki pages that match your question. It's <b>free</b>: you connect your own free Gemini key from your Google account.</p>
+      <h3>Ask the Wise Old Man</h3>
+      <p>He's an AI helper (Google's Gemini) who reads the matching OSRS Wiki pages before answering. It's <b>free</b>: you connect your own free Gemini key from your Google account.</p>
       <ol>
         <li><button class="btn small" id="askStudio">Open Google AI Studio</button> and sign in with your Gmail.</li>
         <li>Click <b>Create API key</b>. No credit card is needed. Don't add billing, so it stays free.</li>
@@ -85,7 +85,7 @@ function showSetup(error) {
 
 function welcomeHtml() {
   const examples = ['How do I get a fire cape?', 'What should I train next for quests?', 'Best money making at my levels?', 'Open the Dragon Slayer II walkthrough'];
-  return `<div class="ask-welcome"><p>Ask a question about Old School RuneScape.${state.me ? ` Answers take <b>${escapeHtml(state.me)}</b>'s levels into account.` : ''}</p>
+  return `<div class="ask-welcome"><p>Greetings, adventurer! Ask me anything about Old School RuneScape. I'll check the wiki before I answer.${state.me ? ` I'll keep <b>${escapeHtml(state.me)}</b>'s levels in mind.` : ''}</p>
     <div class="ask-ex">${examples.map((x) => `<button class="chip" data-q="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join('')}</div></div>`;
 }
 
@@ -144,7 +144,7 @@ async function send(question) {
   }
   const answer = r.answer || (r.open ? `Opening ${r.open.title}${r.open.anchor ? ` (${r.open.anchor})` : ''}.` : '');
   chat.history.push({ role: 'user', text: question }, { role: 'model', text: answer, sources: r.sources });
-  $('askModel').textContent = r.model ? `Gemini · ${r.model}` : '';
+  $('askModel').textContent = r.model ? `AI assistant · ${r.model.replace(/^gemini-([\d.]+)-flash(-lite)?$/, (m, v, l) => `Gemini ${v} Flash${l ? '-Lite' : ''}`)}` : '';
   addBubble('model', answer, r.sources);
   if (r.open) {
     // Gemini asked to open a page: show it (scrolled to the section) and tuck the chat away. ✦ brings it back.

@@ -71,7 +71,9 @@
       <kbd>Ctrl K</kbd>
       <ul class="suggest" id="suggest" role="listbox" hidden></ul>
     </div>
-    <button class="tbtn" id="btnAsk" title="Ask a question (Gemini)"><svg class="ic"><use href="#i-spark"/></svg></button>
+    <button class="tbtn ask-btn" id="btnAsk" title="Ask the Wise Old Man (AI)">
+      <span class="wom wom-sm"><img src="https://oldschool.runescape.wiki/images/Wise_Old_Man_chathead.png" alt="" onerror="this.parentNode.classList.add('fallback')"><svg class="ic"><use href="#i-spark"/></svg></span>
+    </button>
     <button class="tbtn" id="btnBookmark" title="Bookmark this page" disabled><svg class="ic"><use href="#i-bookmark"/></svg></button>
     <button class="tbtn" id="btnToc" title="Sections" disabled><svg class="ic"><use href="#i-list"/></svg></button>
     <button class="tbtn" id="btnRandom" title="Random page"><svg class="ic"><use href="#i-dice"/></svg></button>
@@ -138,8 +140,8 @@
 
   <section class="ask-pop" id="askPop" hidden>
     <header class="ask-head">
-      <svg class="ic"><use href="#i-spark"/></svg>
-      <div class="ask-title">Ask about OSRS<span id="askModel"></span></div>
+      <span class="wom wom-md"><img src="https://oldschool.runescape.wiki/images/Wise_Old_Man_chathead.png" alt="" onerror="this.parentNode.classList.add('fallback')"><svg class="ic"><use href="#i-spark"/></svg></span>
+      <div class="ask-title">Wise Old Man<span id="askModel">AI assistant · answers from the OSRS Wiki</span></div>
       <button class="fbtn" id="askClear" title="New chat"><svg class="ic"><use href="#i-refresh"/></svg></button>
       <button class="fbtn" id="askKeyBtn" title="Change or remove your Gemini key"><svg class="ic"><use href="#i-gear"/></svg></button>
       <button class="fbtn" id="askClose" title="Close (Esc)"><svg class="ic"><use href="#i-close"/></svg></button>
