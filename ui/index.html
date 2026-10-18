@@ -47,6 +47,7 @@
 </div>
 
 <div class="app">
+  <div class="chrome">
   <header class="titlebar" id="titlebar">
     <div class="brand"><svg class="ic"><use href="#i-book"/></svg><span>OSRS Wiki</span></div>
     <div class="page-title" id="pageTitle"></div>
@@ -77,6 +78,7 @@
     <button class="tbtn" id="btnExt" title="Open in browser" disabled><svg class="ic"><use href="#i-ext"/></svg></button>
   </nav>
   <div class="progress" id="progress"></div>
+  </div>
   <div class="mini-preview" id="miniPreview" hidden></div>
 
   <div class="findbar" id="findBar" hidden>
@@ -156,7 +158,7 @@
   <div class="pop settings" id="setPop" hidden>
     <div class="pop-h">Settings</div>
     <div class="row"><span>Theme</span>
-      <div class="seg" id="themeSeg"><button data-v="dark">Dark</button><button data-v="parchment">Parchment</button></div>
+      <div class="seg" id="themeSeg"><button data-v="auto">Auto</button><button data-v="dark">Dark</button><button data-v="light">Light</button></div>
     </div>
     <div class="row"><span>Text size</span>
       <div class="stepper"><button id="zoomOut">−</button><output id="zoomVal">100%</output><button id="zoomIn">+</button></div>

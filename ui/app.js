@@ -494,10 +494,18 @@ document.addEventListener('mousedown', (e) => {
   if (!e.target.closest('.pop, #btnToc, #btnSettings')) closePops();
 });
 
+// 'auto' follows the Windows light/dark setting, live
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
 function applyTheme(t) {
-  document.documentElement.dataset.theme = t;
+  if (t === 'parchment') t = 'light';   // older settings
+  const resolved = t === 'auto' ? (systemDark.matches ? 'dark' : 'light') : t;
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themePref = t;
   $('themeSeg').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === t));
 }
+systemDark.addEventListener('change', () => {
+  if (document.documentElement.dataset.themePref === 'auto') applyTheme('auto');
+});
 function applyZoom(z) {
   els.article.style.setProperty('--zoom', z / 100);
   $('zoomVal').textContent = z + '%';

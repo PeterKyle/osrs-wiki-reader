@@ -1181,7 +1181,7 @@ class Api:
         }
 
     def set_pref(self, key, value):
-        if key == "theme" and value in ("dark", "parchment"):
+        if key == "theme" and value in ("auto", "dark", "light"):
             self._cfg["theme"] = value
         elif key == "zoom":
             self._cfg["zoom"] = max(70, min(160, int(value)))
@@ -1284,6 +1284,10 @@ class Api:
             self._hwnd = int(self._window.native.Handle.ToInt64())
         except Exception:
             self._hwnd = user32.FindWindowW(None, APP_NAME)
+        try:  # Windows 11: native rounded corners for the frameless window (ignored on Windows 10)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(self._hwnd, 33, ctypes.byref(ctypes.c_int(2)), 4)
+        except Exception:
+            pass
         rect = self._cfg.get("rect")
         if rect and len(rect) == 4:
             r = wt.RECT(*rect)
@@ -1407,7 +1411,7 @@ def main():
         frameless=True,
         easy_drag=False,
         on_top=cfg["pinned"],
-        background_color="#16120e" if cfg["theme"] == "dark" else "#efe3c6",
+        background_color="#f4f3f1" if cfg["theme"] in ("light", "parchment") else "#121110",
         text_select=True,
     )
     api._window = window
