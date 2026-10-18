@@ -65,6 +65,18 @@ document.querySelectorAll('.grips > div').forEach((g) => {
 });
 $('btnMin').onclick = () => api.minimize();
 $('btnClose').onclick = () => api.close();
+
+// maximize / restore: the button, or double-click the title bar (like any Windows app)
+window.onMaxState = function (maxed) {
+  const b = $('btnMax');
+  b.querySelector('use').setAttribute('href', maxed ? '#i-restore' : '#i-max');
+  b.title = maxed ? 'Restore' : 'Maximize';
+  document.body.classList.toggle('maxed', maxed);
+};
+const toggleMax = async () => onMaxState(await api.toggle_maximize());
+$('btnMax').onclick = toggleMax;
+$('titlebar').addEventListener('dblclick', (e) => { if (!e.target.closest('button')) toggleMax(); });
+window.addEventListener('pywebviewready', () => setTimeout(async () => onMaxState(await api.is_maximized()), 300));
 els.pin.onclick = async () => els.pin.classList.toggle('on', await api.toggle_pin());
 
 /* ---------------- navigation ---------------- */
@@ -96,6 +108,7 @@ function show(which) {
   els.ext.disabled = !onArticle;
   $('btnChar').classList.toggle('on', which === 'char');
   if (window.updateBookmarkBtn) updateBookmarkBtn();
+  if (window.renderCtx) renderCtx();   // keep the chat's "current page" chip in step with what's on screen
 }
 
 function goHome(push = true) {
@@ -550,7 +563,12 @@ function keyInfo(code) {
   return named[code] ? [named[code][0], named[code][1], !!named[code][2]] : null;
 }
 
-const hk = { btn: $('hkKey'), note: $('hotkeyNote'), recording: false };
+// Two global hotkeys share one recorder: "show" (show/hide the reader) and "ask" (open the Wise Old Man).
+const HK = {
+  show: { btn: $('hkKey'), clear: $('hkClear'), label: () => state.hotkey, ok: () => state.hotkeyOk, what: 'Show / hide' },
+  ask: { btn: $('hkKeyAsk'), clear: $('hkClearAsk'), label: () => state.askHotkey, ok: () => state.askHotkeyOk, what: 'Wise Old Man' },
+};
+const hk = { btn: null, kind: null, note: $('hotkeyNote'), recording: false };
 
 function hkNote(text) {
   hk.note.classList.remove('hint');
@@ -559,13 +577,23 @@ function hkNote(text) {
 }
 
 function renderHotkey() {
-  hk.btn.classList.remove('rec');
-  hk.btn.textContent = state.hotkey === 'Off' ? 'Off (click to set)' : state.hotkey.replace(/\+/g, ' + ');
-  $('hkClear').hidden = state.hotkey === 'Off';
-  if (state.hotkey !== 'Off' && !state.hotkeyOk) hkNote(`${state.hotkey} is already used by another app. Click it to pick a different one.`);
+  let problem = '';
+  for (const k of Object.values(HK)) {
+    const label = k.label() || 'Off';
+    k.btn.classList.remove('rec');
+    k.btn.textContent = label === 'Off' ? 'Off (click to set)' : label.replace(/\+/g, ' + ');
+    k.clear.hidden = label === 'Off';
+    if (label !== 'Off' && !k.ok()) problem = k === HK.ask && label === state.hotkey
+      ? `${label} is already your show / hide hotkey. Click the Wise Old Man one to pick a different combination.`
+      : `${label} is already used by another app. Click it to pick a different one.`;
+  }
+  if (problem) hkNote(problem);
 }
 
-async function startRecording() {
+async function startRecording(kind) {
+  if (hk.recording) await stopRecording();
+  hk.kind = kind;
+  hk.btn = HK[kind].btn;
   hk.recording = true;
   hk.btn.classList.add('rec');
   hk.btn.textContent = 'Press keys…';
@@ -604,18 +632,28 @@ window.addEventListener('keydown', async (e) => {
     return;
   }
   hk.recording = false;
-  state = await api.set_hotkey([...names, keyName].join('+'), mods, vk);   // re-registers (also ends the pause)
+  const kind = hk.kind;
+  state = await api.set_hotkey([...names, keyName].join('+'), mods, vk, kind);   // re-registers (also ends the pause)
   renderHotkey();
   if (state.error) hkNote(state.error);
-  else toast(`Hotkey set to ${state.hotkey.replace(/\+/g, ' + ')}`);
+  else toast(`${HK[kind].what} hotkey set to ${HK[kind].label().replace(/\+/g, ' + ')}`);
 }, true);
 
-hk.btn.onclick = () => (hk.recording ? stopRecording() : startRecording());
-hk.btn.onblur = () => stopRecording();
-$('hkClear').onclick = async () => {
-  state = await api.clear_hotkey();
-  hkNote('');
-  renderHotkey();
+for (const [kind, k] of Object.entries(HK)) {
+  k.btn.onclick = () => (hk.recording && hk.kind === kind ? stopRecording() : startRecording(kind));
+  k.btn.onblur = () => { if (hk.kind === kind) stopRecording(); };
+  k.clear.onclick = async () => {
+    state = await api.clear_hotkey(kind);
+    hkNote('');
+    renderHotkey();
+  };
+}
+
+// the "ask" hotkey (from anywhere): Python shows the window, then calls this
+window.openAskFromHotkey = async function () {
+  if (isMini()) await setMini(false);
+  if (chat.pop.hidden) openAsk();
+  else chat.input.focus();
 };
 
 /* ---------------- find on page (Ctrl+F) ---------------- */

@@ -423,6 +423,42 @@ select { height: 32px; padding: 0 10px; font-size: var(--fs-sm); }
 .dots i:nth-child(3) { animation-delay: .36s; }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; transform: scale(.85); } 40% { opacity: 1; transform: scale(1); } }
 .ask-input { padding: 10px 12px 12px; box-shadow: 0 -1px 0 var(--line); }
+
+/* context sent with the question, like an IDE's open file / selection */
+.ask-ctx { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 2px 8px; }
+.ctx-chip, .ctx-add {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; padding: 0 4px 0 9px;
+  border-radius: var(--r-sm); font-size: 12px; font-weight: 500; border: 0;
+}
+.ctx-chip { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-ring); }
+.ctx-chip > .ic { width: 13px; height: 13px; color: var(--accent); flex: none; }
+.ctx-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
+.ctx-chip.quote span { font-style: italic; color: var(--text-2); }
+.ctx-chip button { width: 20px; height: 20px; border: 0; border-radius: 5px; background: none; color: var(--text-3); display: grid; place-items: center; flex: none; }
+.ctx-chip button:hover { background: var(--fill-hover); color: var(--text); }
+.ctx-chip button .ic { width: 12px; height: 12px; }
+.ctx-add { padding: 0 10px; color: var(--text-3); background: none; box-shadow: inset 0 0 0 1px var(--line); border-style: dashed; }
+.ctx-add:hover { color: var(--text); background: var(--fill); }
+.msg-ctx { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.msg-ctx span {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 1px 7px; border-radius: 6px;
+  font-size: 11px; background: rgba(0, 0, 0, .14); color: inherit; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.msg-ctx .ic { width: 11px; height: 11px; flex: none; }
+
+/* floating "Ask about this" next to highlighted article text */
+.sel-ask {
+  position: fixed; z-index: 57; display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 4px;
+  border: 0; border-radius: var(--r-full); font-size: 12.5px; font-weight: 500; color: var(--text);
+  background: var(--glass-strong); backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--shadow-md), inset 0 0 0 1px var(--line-strong);
+  animation: menu-in var(--fast) var(--ease); transition: transform var(--fast) var(--ease);
+}
+.sel-ask:hover { box-shadow: var(--shadow-md), inset 0 0 0 1px var(--accent-ring); }
+.sel-ask:active { transform: scale(.97); }
+.wom-xs { width: 24px; height: 24px; }
+.wom-xs .ic { width: 14px; height: 14px; }
+body.mini .sel-ask { display: none !important; }
 .ask-input:has(#askInputRow[hidden]) { display: none; }
 .ask-row { display: flex; align-items: flex-end; gap: 8px; }
 .ask-row textarea { flex: 1; resize: none; min-height: 40px; max-height: 120px; padding: 10px 14px; font-size: var(--fs-ui); line-height: 1.45; border-radius: 20px; }
@@ -447,6 +483,8 @@ select { height: 32px; padding: 0 10px; font-size: var(--fs-sm); }
 .ask-keyform input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; }
 .ask-err { color: var(--danger) !important; }
 body.mini #btnAsk, body.mini .ask-pop { display: none !important; }
+body.mini #btnMax { display: none !important; }
+body.maxed { border-color: transparent; }   /* no window edge line when it fills the screen */
 
 /* ---------------- update pop-up: blurred scrim + centered glass card ---------------- */
 

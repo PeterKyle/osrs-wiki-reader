@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.3"
+VERSION = "1.3.4"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -180,6 +180,98 @@ def cleanup_update_leftovers():
         time.sleep(1)
 
 
+# ---- window snapping helpers (frameless window: Windows' own Snap doesn't apply) ----
+class _MonitorInfo(ctypes.Structure):
+    _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+
+
+def monitor_areas(x, y):
+    """(work area, full monitor) of the monitor at a point, as (l, t, r, b) tuples in physical pixels."""
+    user32.MonitorFromPoint.argtypes = [wt.POINT, wt.DWORD]
+    user32.MonitorFromPoint.restype = wt.HANDLE
+    mi = _MonitorInfo()
+    mi.cbSize = ctypes.sizeof(_MonitorInfo)
+    user32.GetMonitorInfoW(user32.MonitorFromPoint(wt.POINT(x, y), 2), ctypes.byref(mi))   # 2 = nearest
+    w, m = mi.rcWork, mi.rcMonitor
+    return (w.left, w.top, w.right, w.bottom), (m.left, m.top, m.right, m.bottom)
+
+
+def snap_zone(x, y):
+    """Which snap zone the cursor is in while dragging: max / left / right / tl / tr / bl / br, or None."""
+    _, (ml, mt, mr, mb) = monitor_areas(x, y)
+    edge, corner = 3, 80
+    at_l, at_r, at_t, at_b = x <= ml + edge, x >= mr - 1 - edge, y <= mt + edge, y >= mb - 1 - edge
+    near_t, near_b = y <= mt + corner, y >= mb - corner
+    if at_l:
+        return "tl" if near_t else "bl" if near_b else "left"
+    if at_r:
+        return "tr" if near_t else "br" if near_b else "right"
+    if at_t:
+        return "tl" if x <= ml + corner else "tr" if x >= mr - corner else "max"
+    return None
+
+
+def snap_rect(zone, x, y):
+    (l, t, r, b), _ = monitor_areas(x, y)
+    cx, cy = (l + r) // 2, (t + b) // 2
+    return {"max": (l, t, r, b), "left": (l, t, cx, b), "right": (cx, t, r, b),
+            "tl": (l, t, cx, cy), "tr": (cx, t, r, cy), "bl": (l, cy, cx, b), "br": (cx, cy, r, b)}[zone]
+
+
+class SnapPreview:
+    """A translucent outline showing where the window will snap, drawn just behind the window (like Windows)."""
+    _registered = False
+
+    def __init__(self):
+        hinst = kernel32.GetModuleHandleW(None)
+        if not SnapPreview._registered:
+            class WNDCLASSW(ctypes.Structure):
+                _fields_ = [("style", wt.UINT), ("lpfnWndProc", ctypes.c_void_p), ("cbClsExtra", ctypes.c_int),
+                            ("cbWndExtra", ctypes.c_int), ("hInstance", wt.HINSTANCE), ("hIcon", wt.HICON),
+                            ("hCursor", wt.HANDLE), ("hbrBackground", wt.HBRUSH), ("lpszMenuName", wt.LPCWSTR),
+                            ("lpszClassName", wt.LPCWSTR)]
+            ctypes.windll.gdi32.CreateSolidBrush.restype = wt.HBRUSH
+            wc = WNDCLASSW()
+            wc.lpfnWndProc = ctypes.cast(user32.DefWindowProcW, ctypes.c_void_p).value
+            wc.hInstance = hinst
+            wc.hbrBackground = ctypes.windll.gdi32.CreateSolidBrush(0x00D8D4CF)   # soft light grey (BGR)
+            wc.lpszClassName = "OSRSWikiReaderSnapPreview"
+            user32.RegisterClassW(ctypes.byref(wc))
+            SnapPreview._registered = True
+        user32.CreateWindowExW.restype = wt.HWND
+        user32.CreateWindowExW.argtypes = [wt.DWORD, wt.LPCWSTR, wt.LPCWSTR, wt.DWORD, ctypes.c_int, ctypes.c_int,
+                                           ctypes.c_int, ctypes.c_int, wt.HWND, wt.HMENU, wt.HINSTANCE, wt.LPVOID]
+        # layered + tool window + click-through + never activates
+        self.hwnd = user32.CreateWindowExW(0x00080000 | 0x00000080 | 0x00000020 | 0x08000000,
+                                           "OSRSWikiReaderSnapPreview", "", 0x80000000, 0, 0, 0, 0,
+                                           None, None, hinst, None)
+        user32.SetLayeredWindowAttributes(self.hwnd, 0, 70, 2)   # ~27% opaque
+        try:
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(self.hwnd, 33, ctypes.byref(ctypes.c_int(2)), 4)  # rounded
+        except Exception:
+            pass
+
+    def show(self, rect, below_hwnd):
+        l, t, r, b = rect
+        pad = 6
+        user32.SetWindowPos(self.hwnd, wt.HWND(below_hwnd), l + pad, t + pad, r - l - 2 * pad, b - t - 2 * pad,
+                            0x0010 | 0x0040)   # NOACTIVATE | SHOWWINDOW, placed just behind our window
+        self.pump()
+
+    def hide(self):
+        user32.ShowWindow(self.hwnd, 0)
+
+    def pump(self):
+        msg = wt.MSG()
+        while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):   # PM_REMOVE
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
+
+    def close(self):
+        user32.DestroyWindow(self.hwnd)
+        self.pump()
+
+
 def clean_release_notes(body):
     """GitHub release text minus the 'how to download' lines, which don't belong in the in-app update pop-up."""
     keep = [line for line in body.replace("\r", "").split("\n")
@@ -226,12 +318,15 @@ HOTKEYS = {
 }
 
 DEFAULTS = {
-    "rect": None,  # [left, top, right, bottom] in physical pixels
+    "rect": None,  # [left, top, right, bottom] in physical pixels (the normal, un-maximized size)
+    "maximized": False,
     "pinned": False,
     "theme": "dark",
     "zoom": 100,
     "hotkey": "Ctrl+Alt+W",  # display label, or "Off"
     "hotkey_spec": None,     # [modifiers, virtual key]; None = look the label up in HOTKEYS
+    "ask_hotkey": "Ctrl+Alt+Q",          # opens the Wise Old Man chat
+    "ask_hotkey_spec": [0x0001 | 0x0002, 0x51],
     "recent": [],
     "accounts": [],  # saved RSNs
     "me": None,      # the RSN used for quest requirement checks
@@ -410,9 +505,12 @@ class Api:
         self._notifier = None
         self._mini = False
         self._full_rect = None
+        self._snapped = None        # None | "max" | "left" | "right" | "tl" | "tr" | "bl" | "br"
+        self._restore_rect = None   # size/place to go back to when un-maximizing / dragging out of a snap
         self._pool = ThreadPoolExecutor(max_workers=3)
         self._hotkey_thread_id = None
         self._hotkey_ok = False
+        self._ask_hotkey_ok = False
         self._hk_done = threading.Event()
 
     # ---- wiki ----
@@ -1037,8 +1135,12 @@ class Api:
         self._cache_put(key, value)
         return value
 
-    def ask(self, question, history=None):
+    def ask(self, question, history=None, context=None):
+        """context: what the player is looking at, like an IDE's open file / selection:
+        {"page": title of the wiki page they're on, "selection": text they highlighted}."""
         question = (question or "").strip()[:1000]
+        ctx_page = str((context or {}).get("page") or "").strip()[:250] or None
+        ctx_sel = " ".join(str((context or {}).get("selection") or "").split())[:2000] or None
         key = self._gemini_key()
         if not key:
             return {"error": "Add your free Gemini key first.", "needKey": True}
@@ -1055,10 +1157,12 @@ class Api:
         topic = next(((t.get("sources") or [None])[0] for t in reversed(history or [])
                       if t.get("role") == "model" and t.get("sources")), None)
         try:
-            titles = self._find_pages(question)
+            titles = self._find_pages(question + (" " + ctx_sel[:200] if ctx_sel else ""))
             if topic and (len(titles) < 2 or FOLLOW_UP.search(question)):
                 titles = [topic] + [t for t in titles if t != topic]
-            pages = [p for p in (self._page_text(t) for t in titles[:3]) if p["text"]]
+            if ctx_page:   # the page they're reading always comes first, plus up to 3 found pages
+                titles = [ctx_page] + [t for t in titles if t.lower() != ctx_page.lower()]
+            pages = [p for p in (self._page_text(t) for t in titles[:4 if ctx_page else 3]) if p["text"]]
         except Exception:
             pages = []
         context = "\n\n".join(f"=== OSRS Wiki page: {p['title']} ===\n{p['text']}" for p in pages)
@@ -1079,8 +1183,18 @@ class Api:
             if turn.get("role") in ("user", "model") and turn.get("text"):
                 limit = 1500 if turn["role"] == "model" else 500
                 contents.append({"role": turn["role"], "parts": [{"text": str(turn["text"])[:limit]}]})
-        prompt = (f"Wiki pages for this question:\n\n{context}\n\n---\n\nQuestion: {question}" if context
-                  else f"(No matching wiki pages were found.)\n\nQuestion: {question}")
+        looking_at = []
+        if ctx_page:
+            looking_at.append(f"The player is reading the wiki page \"{ctx_page}\" in the app right now. "
+                              "Questions like \"this\" or \"here\" usually mean this page.")
+        if ctx_sel:
+            looking_at.append(f"They highlighted this text{' on that page' if ctx_page else ''} and are asking about it:\n"
+                              f"«{ctx_sel}»")
+        prompt = (f"Wiki pages for this question:\n\n{context}\n\n---\n\n" if context
+                  else "(No matching wiki pages were found.)\n\n")
+        if looking_at:
+            prompt += "What the player is looking at:\n" + "\n".join(looking_at) + "\n\n---\n\n"
+        prompt += f"Question: {question}"
         contents.append({"role": "user", "parts": [{"text": prompt}]})
         body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": contents,
                 "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096}}
@@ -1138,7 +1252,7 @@ class Api:
             self._gemini_model = model.split("/")[-1]
             text, open_page = self._take_open_command(text)
             return {"answer": text, "sources": [p["title"] for p in pages], "model": self._gemini_model,
-                    "open": open_page, "mode": mode}
+                    "open": open_page, "mode": mode, "context": {"page": ctx_page, "selection": bool(ctx_sel)}}
         if offline:
             return {"error": f"Couldn't reach Google ({offline}). Check your connection."}
         if busy and not limited:
@@ -1314,6 +1428,8 @@ class Api:
             "zoom": self._cfg["zoom"],
             "hotkey": self._cfg["hotkey"],
             "hotkeyOk": self._hotkey_ok,
+            "askHotkey": self._cfg["ask_hotkey"],
+            "askHotkeyOk": self._ask_hotkey_ok,
             "recent": self._cfg["recent"],
             "accounts": self._cfg["accounts"],
             "me": self._cfg["me"],
@@ -1386,39 +1502,113 @@ class Api:
         if edge in ("n", "s", "e", "w", "ne", "nw", "se", "sw"):
             self._track(edge)
 
+    # ---- maximize / snap (the window is frameless, so Windows' own Snap can't see it; do it ourselves) ----
+    def _set_rect(self, l, t, r, b, flags=0x0004 | 0x0010):
+        user32.SetWindowPos(self._hwnd, None, l, t, r - l, b - t, flags)
+
+    def _window_rect(self):
+        r = wt.RECT()
+        user32.GetWindowRect(self._hwnd, ctypes.byref(r))
+        return r.left, r.top, r.right, r.bottom
+
+    def toggle_maximize(self):
+        """Maximize to the monitor's work area (taskbar stays visible), or restore. Returns True if maximized."""
+        if not self._hwnd or self._mini:
+            return False
+        if self._snapped == "max":
+            self._set_rect(*self._restore_rect)
+            self._snapped = None
+        else:
+            if not self._snapped:
+                self._restore_rect = self._window_rect()
+            l, t, r, b = self._window_rect()
+            work, _ = monitor_areas((l + r) // 2, (t + b) // 2)
+            self._set_rect(*work)
+            self._snapped = "max"
+        return self._snapped == "max"
+
+    def is_maximized(self):
+        return self._snapped == "max"
+
     def _track(self, mode):
-        """Follow the mouse natively until the button is released (smooth move/resize)."""
+        """Follow the mouse natively until the button is released (smooth move/resize). Moving to a screen edge
+        snaps like Windows: top = maximize, left/right = half, corners = quarter, with a preview outline."""
         hwnd = self._hwnd
         if not hwnd:
             return
-        rect = wt.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        l0, t0, r0, b0 = self._window_rect()
         start = wt.POINT()
         user32.GetCursorPos(ctypes.byref(start))
         button = 0x02 if user32.GetSystemMetrics(23) else 0x01  # honour swapped mouse buttons
         min_w, min_h = 360, 320
-        last = None
-        while user32.GetAsyncKeyState(button) & 0x8000:
+        moving = mode == "move" and not self._mini
+        restore_pending = moving and self._snapped is not None
+        if mode != "move" and self._snapped:   # resizing from an edge: it's a normal window again
+            self._snapped = None
+            self._notify_max_state()
+        preview, zone, last = None, None, None
+        try:
+            while user32.GetAsyncKeyState(button) & 0x8000:
+                p = wt.POINT()
+                user32.GetCursorPos(ctypes.byref(p))
+                dx, dy = p.x - start.x, p.y - start.y
+                if restore_pending and abs(dx) + abs(dy) > 6:
+                    # dragging a maximized/snapped window: back to its old size, keeping it under the cursor
+                    rl, rt, rr, rb = self._restore_rect
+                    w, h = rr - rl, rb - rt
+                    frac = (start.x - l0) / max(1, r0 - l0)
+                    l0 = start.x - int(w * frac)
+                    t0 = start.y - min(18, max(4, start.y - t0))
+                    r0, b0 = l0 + w, t0 + h
+                    self._snapped = None
+                    restore_pending = False
+                    self._notify_max_state()
+                l, t, r, b = l0, t0, r0, b0
+                if mode == "move":
+                    if restore_pending:
+                        dx = dy = 0
+                    l, r, t, b = l + dx, r + dx, t + dy, b + dy
+                else:
+                    if "w" in mode:
+                        l = min(l + dx, r - min_w)
+                    if "e" in mode:
+                        r = max(r + dx, l + min_w)
+                    if "n" in mode:
+                        t = min(t + dy, b - min_h)
+                    if "s" in mode:
+                        b = max(b + dy, t + min_h)
+                if (l, t, r, b) != last:
+                    self._set_rect(l, t, r, b)
+                    last = (l, t, r, b)
+                if moving:
+                    z = snap_zone(p.x, p.y)
+                    if z != zone:
+                        zone = z
+                        if zone:
+                            preview = preview or SnapPreview()
+                            preview.show(snap_rect(zone, p.x, p.y), hwnd)
+                        elif preview:
+                            preview.hide()
+                    if preview:
+                        preview.pump()
+                time.sleep(1 / 144)
+        finally:
+            if preview:
+                preview.close()
+        if moving and zone:
+            if not self._snapped:   # "restore" later goes back to the size and place from before this drag
+                self._restore_rect = (l0, t0, r0, b0)
             p = wt.POINT()
             user32.GetCursorPos(ctypes.byref(p))
-            dx, dy = p.x - start.x, p.y - start.y
-            l, t, r, b = rect.left, rect.top, rect.right, rect.bottom
-            if mode == "move":
-                l, r, t, b = l + dx, r + dx, t + dy, b + dy
-            else:
-                if "w" in mode:
-                    l = min(l + dx, r - min_w)
-                if "e" in mode:
-                    r = max(r + dx, l + min_w)
-                if "n" in mode:
-                    t = min(t + dy, b - min_h)
-                if "s" in mode:
-                    b = max(b + dy, t + min_h)
-            if (l, t, r, b) != last:
-                flags = 0x0004 | 0x0010 | (0x0001 if mode == "move" else 0)  # NOZORDER|NOACTIVATE[|NOSIZE]
-                user32.SetWindowPos(hwnd, None, l, t, r - l, b - t, flags)
-                last = (l, t, r, b)
-            time.sleep(1 / 144)
+            self._set_rect(*snap_rect(zone, p.x, p.y))
+            self._snapped = zone
+            self._notify_max_state()
+
+    def _notify_max_state(self):
+        try:
+            self._window.evaluate_js(f"window.onMaxState && onMaxState({json.dumps(self._snapped == 'max')})")
+        except Exception:
+            pass
 
     # ---- lifecycle (not exposed: leading underscore) ----
     def _on_shown(self):
@@ -1435,6 +1625,8 @@ class Api:
             r = wt.RECT(*rect)
             if user32.MonitorFromRect(ctypes.byref(r), 0):  # only restore if still on a monitor
                 user32.SetWindowPos(self._hwnd, None, r.left, r.top, r.right - r.left, r.bottom - r.top, 0x0004)
+        if self._cfg.get("maximized"):
+            self.toggle_maximize()
         threading.Thread(target=self._hotkey_loop, daemon=True).start()
         try:
             self._notifier = Notifier(resource_path("ui", "icon.ico"), APP_NAME,
@@ -1449,9 +1641,13 @@ class Api:
         if self._mini:
             self.set_mini(False)  # remember the full-size window, not the mini strip
         if self._hwnd and not user32.IsIconic(self._hwnd):
-            r = wt.RECT()
-            user32.GetWindowRect(self._hwnd, ctypes.byref(r))
-            self._cfg["rect"] = [r.left, r.top, r.right, r.bottom]
+            if self._snapped and self._restore_rect:   # remember the normal size, and whether it was maximized
+                self._cfg["rect"] = list(self._restore_rect)
+            else:
+                r = wt.RECT()
+                user32.GetWindowRect(self._hwnd, ctypes.byref(r))
+                self._cfg["rect"] = [r.left, r.top, r.right, r.bottom]
+            self._cfg["maximized"] = self._snapped == "max"
         save_config(self._cfg)
 
     def _toggle_visible(self):
@@ -1465,12 +1661,25 @@ class Api:
             user32.SetForegroundWindow(self._hwnd)
             self._window.evaluate_js("window.focusSearch && focusSearch()")
 
-    # ---- show/hide hotkey ----
-    def _hotkey_spec(self):
-        if self._cfg["hotkey"] == "Off":
+    def _open_ask(self):
+        """The Wise Old Man hotkey: bring the reader up (if needed) with the chat open."""
+        if not self._hwnd:
+            return
+        self._window.show()
+        if user32.IsIconic(self._hwnd):
+            self._window.restore()
+        user32.SetForegroundWindow(self._hwnd)
+        self._window.evaluate_js("window.openAskFromHotkey && openAskFromHotkey()")
+
+    # ---- global hotkeys: "show" (id 1) toggles the window, "ask" (id 2) opens the chat ----
+    _HK_KEYS = {"show": ("hotkey", "hotkey_spec"), "ask": ("ask_hotkey", "ask_hotkey_spec")}
+
+    def _hotkey_spec(self, kind="show"):
+        label_key, spec_key = self._HK_KEYS[kind]
+        if self._cfg[label_key] == "Off":
             return None
-        spec = self._cfg.get("hotkey_spec")
-        return tuple(spec) if spec else HOTKEYS.get(self._cfg["hotkey"])
+        spec = self._cfg.get(spec_key)
+        return tuple(spec) if spec else HOTKEYS.get(self._cfg[label_key])
 
     def _hk_command(self, msg):
         """Ask the hotkey thread to re-register (0x8001) or pause (0x8002), and wait until it has."""
@@ -1480,27 +1689,35 @@ class Api:
         user32.PostThreadMessageW(self._hotkey_thread_id, msg, 0, 0)
         self._hk_done.wait(1)
 
-    def set_hotkey(self, label, mods, vk):
+    def set_hotkey(self, label, mods, vk, kind="show"):
+        if kind not in self._HK_KEYS:
+            return {**self.get_state(), "error": "Unknown hotkey."}
         mods, vk = int(mods), int(vk)
         if not 0 < vk < 255 or mods & ~0xF:
             return {**self.get_state(), "error": "That key can't be used as a hotkey."}
         # Without Ctrl/Alt/Win only F-keys, Pause, Scroll Lock and Insert are allowed (anything else breaks typing).
         if not mods & (0x1 | 0x2 | 0x8) and not (0x70 <= vk <= 0x87 or vk in (0x13, 0x91, 0x2D)):
             return {**self.get_state(), "error": "Hold Ctrl, Alt or Win as well, so the hotkey doesn't get in the way of typing."}
-        old = (self._cfg["hotkey"], self._cfg.get("hotkey_spec"))
-        self._cfg["hotkey"], self._cfg["hotkey_spec"] = str(label)[:40], [mods, vk]
+        other = self._hotkey_spec("ask" if kind == "show" else "show")
+        if other and tuple(other) == (mods, vk):
+            return {**self.get_state(), "error": f"{label} is already your other hotkey. Pick a different combination."}
+        label_key, spec_key = self._HK_KEYS[kind]
+        old = (self._cfg[label_key], self._cfg.get(spec_key))
+        self._cfg[label_key], self._cfg[spec_key] = str(label)[:40], [mods, vk]
         self._hk_command(0x8001)
-        if not self._hotkey_ok:
-            self._cfg["hotkey"], self._cfg["hotkey_spec"] = old
+        if not (self._hotkey_ok if kind == "show" else self._ask_hotkey_ok):
+            self._cfg[label_key], self._cfg[spec_key] = old
             self._hk_command(0x8001)
             return {**self.get_state(), "error": f"{label} is already used by Windows or another app. Try a different combination."}
         save_config(self._cfg)
         return self.get_state()
 
-    def clear_hotkey(self):
-        self._cfg["hotkey"], self._cfg["hotkey_spec"] = "Off", None
-        self._hk_command(0x8001)
-        save_config(self._cfg)
+    def clear_hotkey(self, kind="show"):
+        if kind in self._HK_KEYS:
+            label_key, spec_key = self._HK_KEYS[kind]
+            self._cfg[label_key], self._cfg[spec_key] = "Off", None
+            self._hk_command(0x8001)
+            save_config(self._cfg)
         return self.get_state()
 
     def pause_hotkey(self, paused):
@@ -1510,21 +1727,29 @@ class Api:
     def _hotkey_loop(self):
         self._hotkey_thread_id = kernel32.GetCurrentThreadId()
 
+        def reg(hk_id, kind):  # 0x4000 = MOD_NOREPEAT
+            user32.UnregisterHotKey(None, hk_id)
+            spec = self._hotkey_spec(kind)
+            return bool(spec) and bool(user32.RegisterHotKey(None, hk_id, spec[0] | 0x4000, spec[1]))
+
         def register():
-            user32.UnregisterHotKey(None, 1)
-            spec = self._hotkey_spec()
-            self._hotkey_ok = bool(spec) and bool(user32.RegisterHotKey(None, 1, spec[0] | 0x4000, spec[1]))
+            self._hotkey_ok = reg(1, "show")
+            self._ask_hotkey_ok = reg(2, "ask")
 
         register()
         msg = wt.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            if msg.message == 0x0312:  # WM_HOTKEY
-                self._toggle_visible()
+            if msg.message == 0x0312:  # WM_HOTKEY; wParam = the hotkey id
+                if msg.wParam == 2:
+                    self._open_ask()
+                else:
+                    self._toggle_visible()
             elif msg.message == 0x8001:
                 register()
                 self._hk_done.set()
             elif msg.message == 0x8002:
                 user32.UnregisterHotKey(None, 1)
+                user32.UnregisterHotKey(None, 2)
                 self._hk_done.set()
 
 

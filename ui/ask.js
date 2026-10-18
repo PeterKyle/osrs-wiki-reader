@@ -93,25 +93,114 @@ function welcomeHtml() {
     <div class="ask-ex">${examples.map((x) => `<button class="chip" data-q="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join('')}</div></div>`;
 }
 
+/* ---------------- context: the page you're on + what you highlighted (like an IDE's file/selection) ---------------- */
+
+chat.ctx = { pageOff: null, sel: null };   // pageOff: a page title you removed; sel: { text, page }
+
+function ctxPage() {
+  const cur = nav.stack[nav.idx];
+  return cur && cur.kind === 'page' && !els.article.hidden ? cur.title : null;
+}
+function activeContext() {
+  const page = ctxPage();
+  if (chat.ctx.sel && chat.ctx.sel.page !== page) chat.ctx.sel = null;   // highlight from a page you've left
+  return { page: page && chat.ctx.pageOff !== page ? page : null, selection: chat.ctx.sel ? chat.ctx.sel.text : null };
+}
+const snip = (t, n) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
+
+window.renderCtx = function () {
+  const box = $('askCtx');
+  if (!box || chat.pop.hidden) return;
+  const page = ctxPage();
+  const c = activeContext();
+  let html = '';
+  if (c.page) {
+    html += `<span class="ctx-chip" title="This page is sent to the Wise Old Man with your question">${svgIcon('i-doc')}
+      <span>${escapeHtml(c.page)}</span><button type="button" data-x="page" title="Don't include this page">${svgIcon('i-x')}</button></span>`;
+  } else if (page) {
+    html += `<button type="button" class="ctx-add" data-add="page" title="Include the page you're reading">+ ${escapeHtml(snip(page, 40))}</button>`;
+  }
+  if (c.selection) {
+    html += `<span class="ctx-chip quote" title="${escapeHtml(snip(c.selection, 400))}">${svgIcon('i-quote')}
+      <span>${escapeHtml(snip(c.selection, 60))}</span><button type="button" data-x="sel" title="Remove the highlighted text">${svgIcon('i-x')}</button></span>`;
+  }
+  box.innerHTML = html;
+  box.hidden = !html;
+  chat.input.placeholder = c.selection ? 'Ask about the highlighted text…'
+    : c.page ? `Ask about ${snip(c.page, 34)}… (Enter to send)` : 'Ask a question… (Enter to send)';
+};
+$('askCtx').onclick = (e) => {
+  const x = e.target.closest('[data-x]'), add = e.target.closest('[data-add]');
+  if (x && x.dataset.x === 'page') chat.ctx.pageOff = ctxPage();
+  if (x && x.dataset.x === 'sel') chat.ctx.sel = null;
+  if (add) chat.ctx.pageOff = null;
+  renderCtx();
+  chat.input.focus();
+};
+
+// highlight text in an article -> remember it, and offer a floating "Ask about this" button
+const selBtn = $('askSelBtn');
+function hideSelBtn() { selBtn.hidden = true; }
+function articleSelection() {
+  const s = window.getSelection();
+  if (!s || s.isCollapsed || !s.rangeCount || els.article.hidden || !els.article.contains(s.anchorNode)) return null;
+  return s;
+}
+// keep the button next to the highlight (pages shift as images load, and you can scroll)
+function placeSelBtn() {
+  const s = articleSelection();
+  if (!s || !chat.pop.hidden || isMini()) { hideSelBtn(); return; }
+  const r = s.getRangeAt(s.rangeCount - 1).getBoundingClientRect();
+  const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--chrome-h'), 10) || 94;
+  if ((!r.width && !r.height) || r.bottom < top + 8 || r.top > window.innerHeight - 8) { hideSelBtn(); return; }
+  selBtn.hidden = false;
+  const w = selBtn.offsetWidth || 150;
+  selBtn.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w / 2))}px`;
+  selBtn.style.top = `${r.top - 42 > top + 6 ? r.top - 42 : r.bottom + 10}px`;
+}
+document.addEventListener('selectionchange', () => {
+  const s = articleSelection();
+  const text = s ? s.toString().replace(/\s+/g, ' ').trim() : '';
+  if (text.length < 3) { hideSelBtn(); return; }
+  chat.ctx.sel = { text: text.slice(0, 2000), page: ctxPage() };
+  renderCtx();
+  placeSelBtn();
+});
+els.article.addEventListener('mousedown', (e) => {   // clicking elsewhere in the article drops the old highlight
+  if (!e.target.closest('.sel-ask')) { chat.ctx.sel = null; renderCtx(); }
+});
+els.scroller.addEventListener('scroll', () => { if (!selBtn.hidden) placeSelBtn(); }, { passive: true });
+selBtn.addEventListener('mousedown', (e) => e.preventDefault());   // keep the highlight while clicking
+selBtn.onclick = () => { hideSelBtn(); openAsk(); };
+
 function showChat() {
   $('askInputRow').hidden = false;
   chat.body.innerHTML = chat.history.length ? '' : welcomeHtml();
-  chat.history.forEach((m) => addBubble(m.role, m.text, m.sources, false));
+  chat.history.forEach((m) => addBubble(m.role, m.text, m.sources, false, m.ctx));
   if (chat.pending) {   // an answer is still on its way: keep the question and the incoming answer on screen
-    addBubble('user', chat.pendingQ, [], false);
+    addBubble('user', chat.pendingQ, [], false, chat.pendingCtx);
     chat.body.appendChild(chat.pending);
   }
+  renderCtx();
   scrollChat();
   chat.input.focus();
 }
 
-function addBubble(role, text, sources = [], scroll = true) {
+function addBubble(role, text, sources = [], scroll = true, ctx = null) {
   const welcome = chat.body.querySelector('.ask-welcome');
   if (welcome) welcome.remove();
   const div = document.createElement('div');
   div.className = 'msg ' + (role === 'user' ? 'me' : 'ai');
-  if (role === 'user') div.textContent = text;
-  else {
+  if (role === 'user') {
+    div.textContent = text;
+    if (ctx && (ctx.page || ctx.selection)) {   // show what was attached to this question
+      const tags = document.createElement('div');
+      tags.className = 'msg-ctx';
+      tags.innerHTML = (ctx.page ? `<span>${svgIcon('i-doc')}${escapeHtml(snip(ctx.page, 40))}</span>` : '') +
+        (ctx.selection ? `<span title="${escapeHtml(snip(ctx.selection, 400))}">${svgIcon('i-quote')}${escapeHtml(snip(ctx.selection, 36))}</span>` : '');
+      div.appendChild(tags);
+    }
+  } else {
     div.innerHTML = `<div class="wiki md">${renderMarkdown(text)}</div>` +
       (sources && sources.length ? `<div class="ask-src"><span>Wiki pages used:</span>${sources.map((s) => `<a class="chip" href="${wikiHref(s)}">${escapeHtml(s)}</a>`).join('')}</div>` : '');
   }
@@ -126,7 +215,11 @@ async function send(question) {
   chat.busy = true;
   chat.input.value = '';
   autoGrow();
-  addBubble('user', question);
+  const ctx = activeContext();
+  addBubble('user', question, [], true, ctx);
+  chat.pendingCtx = ctx;
+  chat.ctx.sel = null;          // a highlight is used once; the page stays while you're on it
+  renderCtx();
   const thinking = document.createElement('div');
   thinking.className = 'msg ai thinking';
   thinking.innerHTML = '<span class="dots"><i></i><i></i><i></i></span> <span class="status">Reading the wiki…</span>';
@@ -136,7 +229,7 @@ async function send(question) {
   scrollChat();
   let r;
   try {
-    r = await api.ask(question, chat.history.map(({ role, text, sources }) => ({ role, text, sources })));
+    r = await api.ask(question, chat.history.map(({ role, text, sources }) => ({ role, text, sources })), ctx);
   } catch (err) {
     r = { error: 'Something went wrong sending that. Please try again.' };
   } finally {
@@ -152,7 +245,7 @@ async function send(question) {
     return;
   }
   const answer = r.answer || (r.open ? `Opening ${r.open.title}${r.open.anchor ? ` (${r.open.anchor})` : ''}.` : '');
-  chat.history.push({ role: 'user', text: question }, { role: 'model', text: answer, sources: r.sources });
+  chat.history.push({ role: 'user', text: question, ctx }, { role: 'model', text: answer, sources: r.sources });
   $('askModel').textContent = r.model ? `AI · ${r.model.replace(/^gemini-([\d.]+)-flash(-lite)?$/, (m, v, l) => `Gemini ${v} Flash${l ? '-Lite' : ''}`)}` : '';
   addBubble('model', answer, r.sources);
   // keep a long session light: only the last 50 exchanges stay in memory and on screen
@@ -270,6 +363,7 @@ document.addEventListener('keydown', (e) => {
 
 async function openAsk() {
   closePops();
+  hideSelBtn();
   chat.pop.hidden = false;
   $('btnAsk').classList.add('on');
   refreshMode();   // may look up your account type; doesn't hold up the chat

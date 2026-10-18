@@ -9,11 +9,11 @@ A small, fast desktop window for the [Old School RuneScape Wiki](https://oldscho
 ## What it does
 
 - **Wiki reader**: a calm, polished design with auto, dark and light themes, search with autocomplete, find on page (Ctrl+F), bookmarks, history.
-- **Show/hide hotkey** you can set to any combination (Ctrl+Alt+W by default), a **pin** to keep it above the game, and a **mini mode** search strip.
+- **Global hotkeys** you can set to any combination: show/hide (Ctrl+Alt+W) and open the Wise Old Man (Ctrl+Alt+Q). Windows-style **snapping** (drag to the top to maximize, to a side or corner for half/quarter), a **maximize** button, a **pin** to keep it above the game, and a **mini mode** search strip.
 - **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side.
 - **Requirement checks**: set your account and quest, diary and guide pages tick off what you meet. The Character tab lists quests you can start now.
 - **XP calculator** on skill pages, with training methods from the wiki.
-- **Ask the Wise Old Man**: an AI helper (Google's Gemini) that answers from the matching wiki pages and your stats, with Ironman, Hardcore, Ultimate and Group Ironman modes, and can open wiki pages for you. Free: you connect your own free Gemini key from [Google AI Studio](https://aistudio.google.com/apikey), with no billing needed.
+- **Ask the Wise Old Man**: an AI helper (Google's Gemini) that answers from the matching wiki pages and your stats, with Ironman, Hardcore, Ultimate and Group Ironman modes, and can open wiki pages for you. Like a code editor, it sees the page you're reading and any text you highlight. Free: you connect your own free Gemini key from [Google AI Studio](https://aistudio.google.com/apikey), with no billing needed.
 
 Quest and diary progress needs the free **WikiSync** plugin enabled in RuneLite.
 
