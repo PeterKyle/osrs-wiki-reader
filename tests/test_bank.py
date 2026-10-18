@@ -76,5 +76,16 @@ class BankLookups(unittest.TestCase):
         self.assertIsNone(fresh.bank_has(["Coins"]))
 
 
+
+class NoShadowedMethods(unittest.TestCase):
+    """An attribute set in Api.__init__ must never hide a method of the same name (a 1.6.0 bug: a cache called
+    `_items` replaced the `_items()` method, which broke Grand Exchange prices)."""
+
+    def test_instance_attributes_dont_hide_methods(self):
+        api = app.Api(dict(app.DEFAULTS))
+        clashes = [name for name in vars(api) if callable(getattr(type(api), name, None))]
+        self.assertEqual(clashes, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -942,7 +942,7 @@ class Api:
         self._day = {}   # name -> (fetched at, data) for _daily()
         self._reqs = {}
         self._gear = {}
-        self._items = {}
+        self._item_pages = {}
         self._bank_lock = threading.Lock()
         self._bank_cache = None
 
@@ -2267,7 +2267,7 @@ class Api:
         """Is this wiki page an item? (So item pages can say "not in your bank".)"""
         title = (title or "").strip()[:250]
         with self._mem_lock:
-            hit = self._items.get(title)
+            hit = self._item_pages.get(title)
         if hit is not None:
             return hit
         esc = title.replace("\\", "\\\\").replace("'", "\\'")
@@ -2277,9 +2277,9 @@ class Api:
         except Exception:
             return False
         with self._mem_lock:
-            self._items[title] = hit
-            if len(self._items) > 300:
-                self._items.pop(next(iter(self._items)))
+            self._item_pages[title] = hit
+            if len(self._item_pages) > 300:
+                self._item_pages.pop(next(iter(self._item_pages)))
         return hit
 
     # ---- Wise Old Man chat history (last MAX_CHATS conversations) ----
