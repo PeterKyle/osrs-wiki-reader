@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -30,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -104,6 +105,79 @@ def pacific_offset(now):
         return first + ((6 - time.gmtime(first).tm_wday) % 7 + 7 * (nth - 1)) * 86400
 
     return 7 if sunday(3, 2) + 10 * 3600 <= now < sunday(11, 1) + 9 * 3600 else 8
+
+
+# ---- self-update: the downloaded exe finishes its own install (no cmd/console windows) ----
+FINISH_UPDATE_FLAG = "--finish-update"
+
+
+def update_download_path(exe):
+    return os.path.join(os.path.dirname(exe), "OSRS Wiki Reader (update).exe")
+
+
+def update_log(msg, fresh=False):
+    try:
+        with open(os.path.join(os.environ.get("TEMP", CONFIG_DIR), "osrs-wiki-reader-update.log"),
+                  "w" if fresh else "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+    except OSError:
+        pass
+
+
+def launch_clean(args):
+    """Start another copy of the app without leaking this process's PyInstaller variables (otherwise it thinks
+    it's our child and looks for files in our soon-deleted temp folder). It's a windowed exe: no console."""
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("_PYI_", "_MEIPASS"))}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    subprocess.Popen(args, env=env, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def finish_update(target, pids):
+    """Runs inside the freshly downloaded exe: wait for the old app to close, copy ourselves over it, start it."""
+    k32 = ctypes.windll.kernel32
+    k32.OpenProcess.restype = wt.HANDLE
+    k32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+    k32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
+    k32.CloseHandle.argtypes = [wt.HANDLE]
+    update_log("new version started, waiting for the old one to close")
+    for pid in pids:
+        h = k32.OpenProcess(0x00100000, False, pid)   # SYNCHRONIZE
+        if h:
+            k32.WaitForSingleObject(h, 60_000)
+            k32.CloseHandle(h)
+    update_log("app closed")
+    for _ in range(40):                               # the file can stay locked for a moment after exit
+        try:
+            shutil.copyfile(sys.executable, target)
+            update_log("replaced")
+            break
+        except OSError:
+            time.sleep(0.5)
+    else:
+        update_log("could not replace the exe, starting the new version from the download instead")
+        target = sys.executable
+    launch_clean([target])
+    update_log("restarted")
+
+
+def cleanup_update_leftovers():
+    """After an update, remove the downloaded installer copy (and the older updater's leftovers)."""
+    if not getattr(sys, "frozen", False):
+        return
+    exe = sys.executable
+    leftovers = [update_download_path(exe), exe + ".new",
+                 os.path.join(os.environ.get("TEMP", CONFIG_DIR), "osrs-wiki-reader-update.cmd")]
+    for _ in range(20):                               # the helper may still be exiting
+        leftovers = [p for p in leftovers if os.path.exists(p) and os.path.abspath(p) != os.path.abspath(exe)]
+        for p in leftovers:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        if not any(os.path.exists(p) for p in leftovers):
+            return
+        time.sleep(1)
 
 
 def clean_release_notes(body):
@@ -774,12 +848,13 @@ class Api:
                 "canInstall": bool(getattr(sys, "frozen", False)), "page": rel.get("html_url")}
 
     def install_update(self):
-        """Download the new exe next to this one, then swap it in with a tiny script once we've exited."""
+        """Download the new exe next to this one, then let the NEW exe finish the job once we've exited:
+        it waits for us, copies itself over our exe and starts it. No scripts or consoles involved."""
         up = getattr(self, "_update", None)
         if not up or not getattr(sys, "frozen", False):
             return {"error": "Updates can only be installed from the packaged app."}
         exe = sys.executable
-        new = exe + ".new"
+        new = update_download_path(exe)
         try:
             req = urllib.request.Request(up["url"], headers={"User-Agent": USER_AGENT})
             h = hashlib.sha256()
@@ -807,29 +882,13 @@ class Api:
                 pass
             return {"error": f"Update failed: {e}"}
 
-        # A one-file PyInstaller exe runs as two processes (bootloader + app); both lock the file, so wait
-        # for both to exit, then swap the files and restart. `ping` is the sleep: `timeout` needs a console.
-        temp = os.environ.get("TEMP", CONFIG_DIR)
-        script = os.path.join(temp, "osrs-wiki-reader-update.cmd")
-        log = os.path.join(temp, "osrs-wiki-reader-update.log")
-        sleep = "ping -n 2 127.0.0.1 >nul"
-        lines = ["@echo off", f'echo %date% %time% updating to {up["version"]}> "{log}"', "set tries=0"]
-        for i, pid in enumerate([os.getpid(), os.getppid()]):
-            lines += [f":wait{i}", f'tasklist /NH /FI "PID eq {pid}" 2>nul | find " {pid} " >nul || goto waited{i}',
-                      "set /a tries+=1", f"if %tries% lss 60 ({sleep} & goto wait{i})", f":waited{i}"]
-        lines += [f'echo %time% app closed>> "{log}"', "set tries=0", ":move",
-                  f'move /y "{new}" "{exe}" >nul 2>&1 && goto moved', "set /a tries+=1",
-                  f'if %tries% lss 30 ({sleep} & goto move)', f'echo %time% could not replace the exe>> "{log}"', "goto start",
-                  ":moved", f'echo %time% replaced>> "{log}"', ":start", f'start "" "{exe}"', f'echo %time% restarted>> "{log}"',
-                  'del "%~f0"']
-        with open(script, "w", encoding="mbcs") as f:
-            f.write("\r\n".join(lines) + "\r\n")
-        # Don't leak this process's PyInstaller variables into the restarted exe, or it will think it's our
-        # child process and look for its files in our (by then deleted) temp folder.
-        env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("_PYI_", "_MEIPASS"))}
-        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-        subprocess.Popen(["cmd", "/c", script], creationflags=0x08000000 | 0x00000008, close_fds=True,  # no window, detached
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        update_log(f"updating to {up['version']}", fresh=True)
+        # A one-file PyInstaller exe runs as two processes (bootloader + app); both lock our exe, so the new copy
+        # is told to wait for both before replacing it.
+        try:
+            launch_clean([new, FINISH_UPDATE_FLAG, exe, str(os.getpid()), str(os.getppid())])
+        except OSError as e:
+            return {"error": f"Update failed: couldn't start the new version ({e})."}
         threading.Timer(0.5, self._window.destroy).start()
         return {"ok": True}
 
@@ -1477,10 +1536,16 @@ def focus_existing_instance():
 
 
 def main():
+    # Started by an older copy to finish an update: no window, no single-instance check.
+    if len(sys.argv) >= 3 and sys.argv[1] == FINISH_UPDATE_FLAG:
+        finish_update(sys.argv[2], [int(p) for p in sys.argv[3:] if p.isdigit()])
+        return
+
     mutex = kernel32.CreateMutexW(None, False, "Local\\OSRSWikiReader.SingleInstance")
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         focus_existing_instance()
         return
+    threading.Thread(target=cleanup_update_leftovers, daemon=True).start()
 
     cfg = load_config()
     api = Api(cfg)
