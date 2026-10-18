@@ -44,6 +44,46 @@ namespace OsrsWikiReader
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
         [DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
 
+        // Memory saving while hidden or minimized: WebView2's "low" memory target makes the engine drop caches
+        // and graphics buffers; back to normal the moment the window is shown again. No cost while visible.
+        object webView;   // the WinForms WebView2 control (looked up by reflection: no compile-time dependency)
+        bool lowMemory;
+        bool refocus;     // we hid the web view, so give it keyboard focus back when the window is activated
+        // 0 = off, 1 = low memory target, 2 = also tell WebView2 it's invisible (frees graphics buffers),
+        // 3 = also suspend the page (like Edge's sleeping tabs; resumes when shown)
+        public int SaveMemoryLevel = 3;
+
+        public void TrackWebView(object webViewControl) { webView = webViewControl; }
+
+        void SetLowMemory(bool low)
+        {
+            if (low == lowMemory || webView == null || (low && SaveMemoryLevel == 0)) return;
+            lowMemory = low;
+            try
+            {
+                object core = webView.GetType().GetProperty("CoreWebView2").GetValue(webView, null);
+                if (core == null) return;
+                if (!low || SaveMemoryLevel >= 2)
+                {
+                    var control = webView as Control;   // showing it again resumes a suspended page too
+                    if (control != null)
+                    {
+                        control.Visible = !low;
+                        if (low) refocus = true;
+                    }
+                }
+                var level = core.GetType().GetProperty("MemoryUsageTargetLevel");
+                if (level != null)   // older WebView2 runtimes don't have it
+                    level.SetValue(core, Enum.ToObject(level.PropertyType, low ? 1 : 0), null);   // Low = 1, Normal = 0
+                if (low && SaveMemoryLevel >= 3)
+                {
+                    var suspend = core.GetType().GetMethod("TrySuspendAsync");
+                    if (suspend != null) suspend.Invoke(core, null);
+                }
+            }
+            catch (Exception) { }
+        }
+
         public FrameHook(IntPtr hwnd)
         {
             AssignHandle(hwnd);
@@ -80,6 +120,23 @@ namespace OsrsWikiReader
                         return;
                     }
                     break;
+                case 0x0018:   // WM_SHOWWINDOW: hidden (hotkey / tray) or shown again
+                    SetLowMemory(m.WParam == IntPtr.Zero);
+                    break;
+                case 0x0005:   // WM_SIZE: 1 = minimized; 0 / 2 = restored / maximized
+                    long kind = m.WParam.ToInt64();
+                    if (kind == 1) SetLowMemory(true);
+                    else if (kind == 0 || kind == 2) SetLowMemory(false);
+                    break;
+                case 0x0006:   // WM_ACTIVATE: typing should go straight to the page after it was hidden
+                    base.WndProc(ref m);
+                    if (refocus && (m.WParam.ToInt64() & 0xFFFF) != 0)
+                    {
+                        refocus = false;
+                        var c = webView as Control;
+                        if (c != null && c.Visible && !c.ContainsFocus) c.Focus();
+                    }
+                    return;
                 case 0x0231:   // WM_ENTERSIZEMOVE
                     MoveLoops++;
                     break;

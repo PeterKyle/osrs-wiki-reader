@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.8"
+VERSION = "1.3.9"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -290,6 +290,13 @@ class NativeFrame:
         from OsrsWikiReader import FrameHook
         self.hwnd = hwnd
         self._hook = FrameHook(IntPtr(hwnd))   # keep a reference for the window's lifetime
+
+    def track_webview(self, window):
+        """Lets the hook switch WebView2 to its low-memory mode while the window is hidden or minimized."""
+        try:
+            self._hook.TrackWebView(window.native.browser.webview)
+        except Exception:
+            pass
 
     def start_drag(self):
         """Let Windows move the window (Snap Layouts bar, edge snapping, Snap Assist). Handled on the UI thread.
@@ -1711,6 +1718,7 @@ class Api:
             pass
         try:  # a normal window as far as Windows is concerned: Snap Assist, Win+Arrow keys, shadow
             self._frame = NativeFrame(self._hwnd)
+            self._frame.track_webview(self._window)
         except Exception:
             self._frame = None
         rect = self._cfg.get("rect")
