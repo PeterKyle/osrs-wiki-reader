@@ -77,6 +77,7 @@ const API = {
   set_gim_group: async () => clone(window.__PROFILE.gim),
   latest_update: async () => clone(window.__PROFILE.update),
   pet_rates: async () => clone(window.__PROFILE.pets),
+  ca_data: async () => clone(window.__PROFILE.ca),
   rare_drops: async (t) => clone(((window.__PROFILE.drops || {})[t]) || []),
   page_requirements: async (t) => clone((window.__PROFILE.reqs || {})[t] || {}),
   set_goal: async (g) => { __st.goal = g; return state(); },

@@ -1,16 +1,16 @@
 # PyInstaller version resource: gives the exe a proper name in notifications and Task Manager.
 VSVersionInfo(
-  ffi=FixedFileInfo(filevers=(1, 5, 3, 0), prodvers=(1, 5, 3, 0), mask=0x3f, flags=0x0, OS=0x40004,
+  ffi=FixedFileInfo(filevers=(1, 5, 4, 0), prodvers=(1, 5, 4, 0), mask=0x3f, flags=0x0, OS=0x40004,
                     fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[
     StringFileInfo([StringTable('040904B0', [
       StringStruct('CompanyName', 'relay'),
       StringStruct('FileDescription', 'OSRS Wiki Reader'),
-      StringStruct('FileVersion', '1.5.3'),
+      StringStruct('FileVersion', '1.5.4'),
       StringStruct('InternalName', 'OSRS Wiki Reader'),
       StringStruct('OriginalFilename', 'OSRS Wiki Reader.exe'),
       StringStruct('ProductName', 'OSRS Wiki Reader'),
-      StringStruct('ProductVersion', '1.5.3'),
+      StringStruct('ProductVersion', '1.5.4'),
       StringStruct('LegalCopyright', 'Unofficial fan project. Wiki content CC BY-NC-SA 3.0.')])]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

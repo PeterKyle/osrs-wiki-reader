@@ -321,3 +321,14 @@
 .loot b { color: var(--text); }
 .loot span:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; }
 .loot span:last-child { text-align: right; }
+
+/* combat achievements */
+.ca-top { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.ca-top > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--r-md); background: var(--fill); }
+.ca-top > div:first-child { flex: 0 0 auto; min-width: 140px; }
+.ca-top > div:first-child b { font: 600 18px/1.2 var(--font-display); color: var(--accent); }
+.ca-next { flex: 1 1 240px; justify-content: center; font-size: 13px; }
+.ca-next b { color: var(--text); }
+.ca-next b.done { color: var(--success); }
+.ca-tiers { display: flex; flex-direction: column; gap: 2px; }
+.ca-link { margin-top: 8px; font-size: 12.5px; }

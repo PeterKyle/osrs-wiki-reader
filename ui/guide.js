@@ -12,6 +12,7 @@ function guideKeyRows() {
     [['Ctrl', 'K'], 'Search the wiki (or just press /)'],
     [['Ctrl', 'F'], 'Find text on the page (Enter for the next match)'],
     [['Ctrl', 'N'], 'Start a new Wise Old Man chat'],
+    [['Ctrl', 'Tab'], 'Flip between recent pages (keep Ctrl held, press Tab again to go further back)'],
     [['Alt', '←'], 'Back (Alt + → goes forward; mouse side buttons work too)'],
     [['Ctrl', '+'], 'Bigger text (Ctrl + − smaller, Ctrl + 0 resets)'],
     [['Esc'], 'Close menus or the chat'],

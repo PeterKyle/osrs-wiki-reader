@@ -256,6 +256,41 @@ function bindXpChart(p) {
   drawXpChart(p);
 }
 
+/* ---------------- combat achievements (WikiSync + the wiki's task list) ---------------- */
+
+const CA_TIERS = [['Easy', 1], ['Medium', 2], ['Hard', 3], ['Elite', 4], ['Master', 5], ['Grandmaster', 6]];
+
+async function renderCombatAchievements(p) {
+  const box = $('pxCA');
+  const ids = p.sync && p.sync.combatAchievements;
+  if (!box || !ids) return;   // needs WikiSync
+  const d = await api.ca_data();
+  if (!box.isConnected || !d || !Object.keys(d.tasks || {}).length) return;
+  const total = {}, done = {};
+  Object.values(d.tasks).forEach(([tier]) => { total[tier] = (total[tier] || 0) + 1; });
+  ids.forEach((id) => { const t = d.tasks[String(id)]; if (t) done[t[0]] = (done[t[0]] || 0) + 1; });
+  const points = CA_TIERS.reduce((sum, [t, pts]) => sum + (done[t] || 0) * pts, 0);
+  const th = d.thresholds || {};
+  const reached = CA_TIERS.filter(([t]) => th[t] && points >= th[t]).pop();
+  const next = CA_TIERS.find(([t]) => th[t] && points < th[t]);
+  const doneCount = Object.values(done).reduce((a, b) => a + b, 0);
+  let html = `<h2 class="home-h">Combat achievements <span class="since">${fmt(doneCount)} tasks · ${fmt(points)} points</span></h2><div class="c-card ca">`;
+  html += `<div class="ca-top"><div><span class="dim">Rewards unlocked</span><b>${reached ? reached[0] : 'None yet'}</b></div>`;
+  if (next) {
+    const to = th[next[0]];
+    html += `<div class="ca-next"><span class="dim">${fmt(to - points)} points to <b>${next[0]}</b> rewards</span>
+      <span class="gtrack big"><span style="width:${Math.max(2, (points / to) * 100)}%"></span></span>
+      <small class="dim">${fmt(points)} / ${fmt(to)}</small></div>`;
+  } else html += `<div class="ca-next"><b class="done">Every reward tier unlocked!</b></div>`;
+  html += `</div><div class="ca-tiers">` + CA_TIERS.filter(([t]) => total[t]).map(([t, pts]) => `<div class="goal">
+      <span class="gn wide">${t} <span class="dim">· ${pts} pt${pts > 1 ? 's' : ''} each</span></span>
+      <span class="gtrack"><span style="width:${Math.max(2, ((done[t] || 0) / total[t]) * 100)}%"></span></span>
+      <span class="gv">${done[t] || 0} / ${total[t]}</span><span></span></div>`).join('') +
+    `</div><button class="linkbtn ca-link" id="caWiki">Combat achievements on the wiki</button></div>`;
+  box.innerHTML = html;
+  $('caWiki').onclick = () => openPage('Combat Achievements');
+}
+
 /* ---------------- Group Ironman group (official GIM hiscores) ---------------- */
 
 async function renderGroup(p) {

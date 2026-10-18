@@ -119,6 +119,7 @@ function show(which) {
   els.toc.disabled = !onArticle;
   els.ext.disabled = !onArticle;
   $('btnChar').classList.toggle('on', which === 'char');
+  if (window.trackMru) trackMru();   // Ctrl+Tab's recent list (switcher.js)
   if (window.updateBookmarkBtn) updateBookmarkBtn();
   if (window.renderCtx) renderCtx();   // keep the chat's "current page" chip in step with what's on screen
 }

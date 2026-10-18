@@ -244,6 +244,8 @@ function renderPlayer(p) {
       <a href="${wikiHref('RuneScape:WikiSync')}">WikiSync</a> plugin in RuneLite, log in once, and it'll show up here.</div>`;
   }
 
+  html += '<div id="pxCA"></div>';   // combat achievements (profile.js)
+
   // bosses, clues and other activities
   const acts = p.activities.filter((a) => a.score > 0);
   const lastMisc = p.activities.findIndex((a) => a.name === 'Collections Logged');
@@ -288,6 +290,7 @@ function renderPlayer(p) {
   bindXpChart(p);
   renderExtras(p);
   renderGroup(p);
+  renderCombatAchievements(p);
   if (p.sync) renderQuestSuggestions(p, levels);
   const track = $('btnTrack');
   if (track) track.onclick = () => update(track);

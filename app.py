@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -745,6 +745,24 @@ def collection_log_index(rows, max_sources=60, commonest=1 / 100):
     return idx
 
 
+CA_POINTS = {"Easy": 1, "Medium": 2, "Hard": 3, "Elite": 4, "Master": 5, "Grandmaster": 6}
+
+
+def parse_ca_thresholds(page_html):
+    """Points needed for each combat achievement reward tier, from the wiki's tier table."""
+    clean = lambda c: re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", c))).strip()
+    out = {}
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page_html, re.S):
+        cells = [clean(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)]
+        cells = [c for c in cells if c]
+        tier = cells[0].replace("-", "").replace(" ", "") if cells else ""
+        if len(cells) >= 5 and tier in CA_POINTS and tier not in out:   # the first table: later ones list rewards
+            m = re.match(r"[\d,]+", cells[4])
+            if m:
+                out[tier] = int(m.group(0).replace(",", ""))
+    return out
+
+
 def _strip_wikitext(text):
     text = re.sub(r"<ref[^>]*?/>|<ref.*?</ref>", "", text, flags=re.S)
     text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", text)          # [[page|label]] -> label
@@ -806,7 +824,9 @@ def fetch_wikisync(name):
     for area, tiers in (data.get("achievement_diaries") or {}).items():
         diaries[area] = {tier: {"complete": bool(info.get("complete")), "tasks": info.get("tasks") or []}
                          for tier, info in tiers.items() if isinstance(info, dict)}
+    ca = data.get("combat_achievements")
     return {"quests": quests, "levels": data.get("levels") or {}, "diaries": diaries,
+            "combatAchievements": [i for i in ca if isinstance(i, int)] if isinstance(ca, list) else None,
             "timestamp": data.get("timestamp")}
 
 
@@ -1901,6 +1921,16 @@ class Api:
             if len(self._reqs) > 200:
                 self._reqs.pop(next(iter(self._reqs)))
         return out
+
+    # ---- profile: combat achievements (which tasks exist, their tier, and reward thresholds; daily) ----
+    def ca_data(self):
+        def fetch():
+            rows = self._bucket("bucket('combat_achievement').select('id','name','monster','tier','type').limit(2000).run()")
+            tasks = {str(r["id"]): [r.get("tier"), r.get("monster") or "", r.get("name") or ""]
+                     for r in rows if isinstance(r.get("id"), int) and r.get("tier") in CA_POINTS}
+            page = api_get(action="parse", page="Combat Achievements", prop="text")["parse"]["text"]
+            return {"tasks": tasks, "thresholds": parse_ca_thresholds(page)} if tasks else None
+        return self._daily("combat_achievements", fetch) or {"tasks": {}, "thresholds": {}}
 
     # ---- home: the newest game update from the wiki ----
     def latest_update(self):

@@ -115,6 +115,29 @@ const S = {
     const g = document.querySelector('#homeGoal .upd-name'), r = document.querySelector('#homeRecap .recap-nums');
     return { pinnedOn, goal: g ? g.textContent : null, recap: r ? r.textContent.replace(/\s+/g, ' ').trim() : null };
   },
+  async ca() {
+    await openCharacter('Clyde Lives'); await wait(1500);
+    const box = $id('pxCA'); box.scrollIntoView(); els.scroller.scrollTop -= 80; await wait(300);
+    const q = (s) => (box.querySelector(s) || {}).textContent || '';
+    return { since: q('.since'), unlocked: q('.ca-top b'), next: q('.ca-next .dim').replace(/\s+/g, ' ').trim(), tiers: box.querySelectorAll('.ca-tiers .goal').length };
+  },
+  async switcherview() {   // held open, for the screenshot
+    await openPage('Abyssal whip'); await wait(400); await openPage('Agility'); await wait(400);
+    await openCharacter('Woox'); await wait(600); await openPage('Optimal quest guide'); await wait(600);
+    key(document.body, { key: 'Tab', ctrlKey: true }); await wait(200);
+    return { rows: document.querySelectorAll('.switcher .sw-row').length };
+  },
+  async switcher() {
+    await openPage('Abyssal whip'); await wait(500);
+    await openPage('Agility'); await wait(500);
+    await openCharacter('Woox'); await wait(800);
+    key(document.body, { key: 'Tab', ctrlKey: true }); await wait(100);
+    const first = (document.querySelector('.switcher .sw-row.on span') || {}).textContent;
+    key(document.body, { key: 'Tab', ctrlKey: true }); await wait(100);
+    const second = (document.querySelector('.switcher .sw-row.on span') || {}).textContent;
+    document.body.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control', bubbles: true })); await wait(900);
+    return { first, second, opened: nav.stack[nav.idx].title, closed: document.querySelector('.switcher').hidden };
+  },
   async petluck() {
     state.me = 'Clyde Lives';
     await openPage('Kraken'); await wait(1200);
