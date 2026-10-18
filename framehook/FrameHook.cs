@@ -25,12 +25,24 @@ namespace OsrsWikiReader
         [StructLayout(LayoutKind.Sequential)]
         struct STYLESTRUCT { public int StyleOld, StyleNew; }
 
+        [StructLayout(LayoutKind.Sequential)]
+        struct POINT { public int X, Y; }
+
+        // Posted by Python (any thread) when the title bar is pressed: hand the drag to Windows.
+        public const int WM_START_DRAG = 0x8000 + 0x51;   // WM_APP + 0x51
+
+        // How many times Windows has started moving/sizing the window; Python watches it to confirm a drag took.
+        public volatile int MoveLoops;
+
         [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr hwnd);
         [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
         [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [DllImport("user32.dll")] static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+        [DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
 
         public FrameHook(IntPtr hwnd)
         {
@@ -45,6 +57,14 @@ namespace OsrsWikiReader
         {
             switch (m.Msg)
             {
+                case WM_START_DRAG:
+                    // Act as if the press landed on a real title bar: Windows runs its own move loop, which brings
+                    // Snap Layouts (the bar at the top of the screen), edge snapping and Snap Assist.
+                    ReleaseCapture();
+                    POINT p;
+                    GetCursorPos(out p);
+                    PostMessage(m.HWnd, 0x00A1, new IntPtr(2), new IntPtr((p.Y << 16) | (p.X & 0xFFFF)));   // WM_NCLBUTTONDOWN, HTCAPTION
+                    return;
                 case 0x0083:   // WM_NCCALCSIZE: the whole window is client area (no visible frame)
                     if (m.WParam != IntPtr.Zero)
                     {
@@ -59,6 +79,9 @@ namespace OsrsWikiReader
                         m.Result = IntPtr.Zero;
                         return;
                     }
+                    break;
+                case 0x0231:   // WM_ENTERSIZEMOVE
+                    MoveLoops++;
                     break;
                 case 0x0086:   // WM_NCACTIVATE: lParam -1 = don't paint a frame on focus changes
                     m.LParam = new IntPtr(-1);

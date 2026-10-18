@@ -52,9 +52,15 @@ window.focusSearch = function () {
 
 /* ---------------- window chrome ---------------- */
 
+// Pressing the title bar hands the drag to Windows (Snap Layouts bar, edge snapping). Windows then owns the
+// mouse, so a double-click is spotted from two quick presses rather than the dblclick event.
+let lastPress = { t: 0, x: 0, y: 0 };
 $('titlebar').addEventListener('mousedown', (e) => {
-  if (e.button !== 0 || e.target.closest('button')) return;
-  api && api.start_drag();
+  if (e.button !== 0 || e.target.closest('button') || !api) return;
+  const double = e.timeStamp - lastPress.t < 450 && Math.abs(e.screenX - lastPress.x) < 6 && Math.abs(e.screenY - lastPress.y) < 6;
+  lastPress = double ? { t: 0, x: 0, y: 0 } : { t: e.timeStamp, x: e.screenX, y: e.screenY };
+  if (double && !isMini()) toggleMax();
+  else api.start_drag();
 });
 document.querySelectorAll('.grips > div').forEach((g) => {
   g.addEventListener('mousedown', (e) => {
@@ -75,7 +81,6 @@ window.onMaxState = function (maxed) {
 };
 const toggleMax = async () => onMaxState(await api.toggle_maximize());
 $('btnMax').onclick = toggleMax;
-$('titlebar').addEventListener('dblclick', (e) => { if (!e.target.closest('button')) toggleMax(); });
 window.addEventListener('pywebviewready', () => setTimeout(async () => onMaxState(await api.is_maximized()), 300));
 // Windows can maximize/restore it too (Win+Up/Down, Snap Assist): re-check after the window settles
 let maxCheck = null;

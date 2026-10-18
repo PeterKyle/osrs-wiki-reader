@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.7"
+VERSION = "1.3.8"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -290,6 +290,24 @@ class NativeFrame:
         from OsrsWikiReader import FrameHook
         self.hwnd = hwnd
         self._hook = FrameHook(IntPtr(hwnd))   # keep a reference for the window's lifetime
+
+    def start_drag(self):
+        """Let Windows move the window (Snap Layouts bar, edge snapping, Snap Assist). Handled on the UI thread.
+        Returns False if Windows didn't take the drag (the mouse moved but no move loop started)."""
+        before = self._hook.MoveLoops
+        user32.PostMessageW(self.hwnd, 0x8000 + 0x51, 0, 0)   # FrameHook.WM_START_DRAG
+        button = 0x02 if user32.GetSystemMetrics(23) else 0x01
+        start, t0 = wt.POINT(), time.monotonic()
+        user32.GetCursorPos(ctypes.byref(start))
+        while user32.GetAsyncKeyState(button) & 0x8000:
+            if self._hook.MoveLoops != before:
+                return True
+            p = wt.POINT()
+            user32.GetCursorPos(ctypes.byref(p))
+            if abs(p.x - start.x) + abs(p.y - start.y) > 12 and time.monotonic() - t0 > 0.3:
+                return False
+            time.sleep(0.01)
+        return True
 
     def zoomed(self):
         return bool(user32.IsZoomed(self.hwnd))
@@ -1524,6 +1542,9 @@ class Api:
         r = wt.RECT()
         user32.GetWindowRect(hwnd, ctypes.byref(r))
         if on and not self._mini:
+            if self._frame and self._frame.zoomed():   # leave Windows' maximize first, back to the normal size
+                user32.ShowWindow(hwnd, 9)
+                user32.GetWindowRect(hwnd, ctypes.byref(r))
             self._full_rect = (r.left, r.top, r.right, r.bottom)
             self._mini = True
             self._set_topmost(True)
@@ -1545,7 +1566,9 @@ class Api:
             user32.SetWindowPos(self._hwnd, None, 0, 0, r.right - r.left, h, 0x0002 | 0x0004 | 0x0010)  # NOMOVE
 
     def start_drag(self):
-        self._track("move")
+        if self._frame and not self._mini and self._frame.start_drag():   # Windows did the moving and snapping
+            return
+        self._track("move")   # mini strip (no snapping), no frame hook, or Windows didn't take the drag
 
     def start_resize(self, edge):
         if edge in ("n", "s", "e", "w", "ne", "nw", "se", "sw"):
@@ -1564,10 +1587,12 @@ class Api:
         """Maximize to the monitor's work area (taskbar stays visible), or restore. Returns True if maximized."""
         if not self._hwnd or self._mini:
             return False
-        if self._frame and self._frame.zoomed():   # maximized by Windows (Win+Up, Snap Assist): let it restore
-            user32.ShowWindow(self._hwnd, 9)   # SW_RESTORE
-            self._snapped = None
-            return False
+        if self._frame:   # Windows' own maximize: dragging the title bar pulls it back out, like any app
+            if self._snapped:   # left over from our own snapping
+                self._set_rect(*self._restore_rect)
+                self._snapped = None
+            user32.ShowWindow(self._hwnd, 9 if self._frame.zoomed() else 3)   # SW_RESTORE / SW_SHOWMAXIMIZED
+            return self._frame.zoomed()
         if self._snapped == "max":
             self._set_rect(*self._restore_rect)
             self._snapped = None
