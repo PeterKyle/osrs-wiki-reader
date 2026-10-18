@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.6.2"
+VERSION = "1.6.3"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -871,6 +871,24 @@ def parse_recommended_gear(rows):
     return out
 
 
+def compact_recipes(rows):
+    """Recipes from the wiki, reduced to what "what can I make" needs:
+    [{out, q, mats: [[name, qty]], skills: [[skill, level, xp]]}] (only ones with materials and an output)."""
+    out = []
+    for r in rows or []:
+        try:
+            j = json.loads(r["production_json"]) if isinstance(r.get("production_json"), str) else (r.get("production_json") or {})
+            o = j.get("output") or {}
+            mats = [[m["name"], float(m.get("quantity") or 1)] for m in j.get("materials") or [] if m.get("name")]
+            skills = [[k["name"], int(float(k.get("level") or 1)), float(k.get("experience") or 0)]
+                      for k in j.get("skills") or [] if k.get("name")]
+        except (ValueError, TypeError, KeyError, AttributeError):
+            continue
+        if isinstance(o, dict) and o.get("name") and mats:
+            out.append({"out": o["name"], "q": float(o.get("quantity") or 1), "mats": mats, "skills": skills})
+    return out
+
+
 def _strip_wikitext(text):
     text = re.sub(r"<ref[^>]*?/>|<ref.*?</ref>", "", text, flags=re.S)
     text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", text)          # [[page|label]] -> label
@@ -957,6 +975,7 @@ class Api:
         self._reqs = {}
         self._gear = {}
         self._item_pages = {}
+        self._sources = {}
         self._bank_lock = threading.Lock()
         self._bank_cache = None
 
@@ -2354,6 +2373,109 @@ class Api:
             out.append({"style": setup["style"], "upgrades": ups,
                         "cheapest": min(priced) if priced else None})
         return out
+
+    def bank_items(self):
+        """Your bank as [{name, qty}] (for searching it), biggest stacks first."""
+        b = self._my_bank()
+        if not b:
+            return None
+        return sorted(({"name": k, "qty": v} for k, v in (b.get("items") or {}).items()), key=lambda x: -x["qty"])
+
+    def item_sources(self, name):
+        """Where an item comes from: best drop rates, shops, how it's made, and the quest it's tied to."""
+        name = (name or "").strip()[:120]
+        with self._mem_lock:
+            hit = self._sources.get(name)
+        if hit is not None:
+            return hit
+        esc = name.replace("\\", "\\\\").replace("'", "\\'")
+        out = {"drops": [], "shops": [], "made": None, "quest": None}
+        try:
+            drops = []
+            for r in self._bucket(f"bucket('dropsline').select('page_name','drop_json').where('item_name','{esc}').limit(200).run()"):
+                d = json.loads(r["drop_json"]) if isinstance(r.get("drop_json"), str) else (r.get("drop_json") or {})
+                p = parse_drop_rate(d.get("Rarity"))
+                if p > 0:
+                    drops.append((p, r.get("page_name"), d.get("Rarity")))
+            out["drops"] = [{"source": src, "rate": f"1/{round(1 / p):,}" if p < 1 else "always"}
+                            for p, src, _ in sorted(drops, key=lambda x: -x[0])[:3]]
+        except Exception:
+            pass
+        try:
+            for r in self._bucket(f"bucket('storeline').select('sold_by','store_buy_price','store_currency')"
+                                  f".where('sold_item','{esc}').limit(5).run()")[:2]:
+                price = r.get("store_buy_price")
+                out["shops"].append({"seller": r.get("sold_by"), "price": None if price in (None, "N/A") else price,
+                                     "currency": r.get("store_currency") or "Coins"})
+        except Exception:
+            pass
+        try:
+            rec = compact_recipes(self._bucket(f"bucket('recipe').select('production_json').where('page_name','{esc}').limit(3).run()"))
+            if rec:
+                out["made"] = {"skills": rec[0]["skills"], "mats": rec[0]["mats"][:4]}
+        except Exception:
+            pass
+        try:
+            rows = self._bucket(f"bucket('infobox_item').select('quest').where('page_name','{esc}').limit(1).run()")
+            q = rows and rows[0].get("quest")
+            out["quest"] = q if q and str(q).lower() not in ("no", "none", "n/a") else None
+        except Exception:
+            pass
+        with self._mem_lock:
+            self._sources[name] = out
+            if len(self._sources) > 200:
+                self._sources.pop(next(iter(self._sources)))
+        return out
+
+    def _recipes(self):
+        def fetch():
+            rows, offset = [], 0
+            while offset < 30000:   # pages of 5,000 (about 7,800 recipes in all)
+                page = self._bucket(f"bucket('recipe').select('production_json').limit(5000).offset({offset}).run()")
+                rows += page
+                if len(page) < 5000:
+                    break
+                offset += 5000
+            return compact_recipes(rows)
+        return self._daily("recipes", fetch) or []
+
+    def can_make(self):
+        """What you could make right now from your bank, with your levels: the most XP and the most profit."""
+        b = self._my_bank()
+        me = self._cfg.get("me")
+        if not b or not me:
+            return None
+        p = self.player(me)
+        if not p or p.get("error"):
+            return {"error": "Couldn't load your levels."}
+        levels = {s["name"].lower(): s["level"] for s in p.get("skills") or [] if s.get("level", 0) > 0}
+        have = {}
+        for name, qty in (b.get("items") or {}).items():
+            have[item_key(name)] = have.get(item_key(name), 0) + qty
+        try:
+            latest = self._get_timed(f"{PRICES}/latest", 600)["data"]
+        except Exception:
+            latest = {}
+        def price(n):   # coins (sawmill fees, etc.) count at face value
+            low = n.lower()
+            return 1 if low == "coins" else 1000 if low == "platinum token" else (self._ge_price(n, None, latest) or 0)
+        seen, rows = set(), []
+        for r in self._recipes():
+            if any(levels.get(k.lower(), 1) < lv for k, lv, _ in r["skills"]):
+                continue
+            n = min(int(have.get(item_key(m), 0) // q) for m, q in r["mats"]) if r["mats"] else 0
+            key = (r["out"], tuple(m for m, _ in r["mats"]))
+            if n <= 0 or key in seen:
+                continue
+            seen.add(key)
+            xp = n * sum(x for _, _, x in r["skills"])
+            out_price = price(r["out"])
+            profit = n * (out_price * r["q"] - sum(price(m) * q for m, q in r["mats"])) if out_price else None
+            rows.append({"name": r["out"], "n": n * r["q"], "xp": xp, "profit": profit,
+                         "skill": r["skills"][0][0] if r["skills"] else None})
+        by_xp = sorted((x for x in rows if x["xp"] > 0), key=lambda x: -x["xp"])[:10]
+        by_profit = sorted((x for x in rows if x["profit"] and x["profit"] > 0), key=lambda x: -x["profit"])[:10]
+        return {"xp": by_xp, "profit": by_profit, "count": len(rows)}
 
     def _bank_context(self, texts):
         """For the Wise Old Man: items in your bank that the wiki pages (or the question) mention."""

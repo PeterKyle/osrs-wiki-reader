@@ -153,6 +153,22 @@ const S = {
         return { ticked: rows, some }; })(),
     };
   },
+  async bankmore() {
+    state.me = 'Clyde Lives';
+    for (const m of ['save_account', 'set_me']) { const real = api[m]; api[m] = async (...a) => ({ ...(await real(...a)), me: 'Clyde Lives' }); }
+    window.__BANK = { 'Abyssal whip': 1, 'Dragon hunter crossbow': 1, 'Masori mask (f)': 1, "Black d'hide body": 1, 'Dragon axe': 1, 'Rune pickaxe': 1, Coins: 5000000 };
+    await openCharacter('Clyde Lives'); await wait(1300);
+    const input = $id('bankSearch'); input.value = 'ax'; input.dispatchEvent(new Event('input')); await wait(300);
+    const hits = [...$id('bankHits').querySelectorAll('a')].map((a) => a.textContent);
+    const det = $id('bankMake'); det.open = true; det.dispatchEvent(new Event('toggle')); await wait(500);
+    const makeXp = [...det.querySelectorAll('.make-rows a')].map((a) => a.textContent).slice(0, 2);
+    det.querySelector('.make-tabs button[data-i="1"]').click(); await wait(200);
+    const makeProfit = [...det.querySelectorAll('.make-rows a')].map((a) => a.textContent).slice(0, 1);
+    await openPage('Vorkath'); await wait(1200);
+    const where = [...els.article.querySelectorAll('.gear .where')].find((b) => b.dataset.item === "Karil's leathertop");
+    if (where) { where.click(); await wait(400); }
+    return { hits, makeXp, makeProfit, where: ((els.article.querySelector('.where-info') || {}).textContent || '').trim() };
+  },
   async pets() {
     await openCharacter('Clyde Lives'); await wait(1500);
     const box = $id('pxPets'); box.scrollIntoView(); els.scroller.scrollTop -= 80; await wait(300);

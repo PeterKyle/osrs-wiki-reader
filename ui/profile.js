@@ -144,14 +144,60 @@ async function renderBank(p) {
   box.innerHTML = `<h2 class="home-h">Bank</h2><div class="c-card bank-card">` + (info.imported
     ? `<div><b>${fmt(info.different)}</b> different items <span class="dim">· imported ${timeAgo(info.updated * 1000)}</span>
         <div id="bankValue" class="bank-value"></div>
-        <p class="dim">Item pages show how many you have, boss pages tick the recommended gear you own.</p></div>
+        <p class="dim">Item pages show how many you have, boss pages tick the recommended gear you own.</p>
+        <input id="bankSearch" class="bank-search" placeholder="Search your bank" autocomplete="off" spellcheck="false">
+        <div id="bankHits" class="bank-hits"></div>
+        <details id="bankMake" class="bank-make"><summary>What can I make from my bank?</summary><div id="bankMakeBox"></div></details></div>
         <div class="bank-actions"><button class="btn small" id="bankImport">Update</button><button class="linkbtn" id="bankClear">Remove</button></div>`
     : `<div><b>Import your bank</b><p class="dim">Then item pages show how many you have, and boss pages tick the recommended gear you own. It stays on this PC.</p></div>
         <div class="bank-actions"><button class="btn small" id="bankImport">Import bank</button></div>`) + `</div>`;
   $('bankImport').onclick = () => openBankImport(p);
-  if (info.imported && isMe) renderBankValue();
+  if (info.imported && isMe) { renderBankValue(); bindBankSearch(); bindCanMake(); }
   const clear = $('bankClear');
   if (clear) clear.onclick = async () => { await api.clear_bank(p.name); renderBank(p); toast('Bank removed from this PC.'); };
+}
+
+// search your bank: filtered locally as you type
+async function bindBankSearch() {
+  const input = $('bankSearch'), hits = $('bankHits');
+  if (!input) return;
+  let items = null;
+  input.oninput = async () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { hits.innerHTML = ''; return; }
+    items = items || (await api.bank_items()) || [];
+    const found = items.filter((x) => x.name.toLowerCase().includes(q));
+    hits.innerHTML = found.length
+      ? found.slice(0, 30).map((x) => `<div><a href="${wikiHref(x.name)}">${escapeHtml(x.name)}</a><b>${fmt(x.qty)}</b></div>`).join('') +
+        (found.length > 30 ? `<p class="dim">…and ${found.length - 30} more</p>` : '')
+      : `<p class="dim">Nothing called “${escapeHtml(input.value.trim())}” in your bank.</p>`;
+  };
+}
+
+// what you could make right now from your bank, with your levels (loaded when opened)
+function bindCanMake() {
+  const det = $('bankMake');
+  if (!det) return;
+  det.ontoggle = async () => {
+    const box = $('bankMakeBox');
+    if (!det.open || box.dataset.done) return;
+    box.innerHTML = '<div class="dim qs-loading">Checking every recipe on the wiki against your bank and levels…</div>';
+    const r = await api.can_make();
+    if (!box.isConnected) return;
+    if (!r || r.error) { box.innerHTML = `<p class="dim">${escapeHtml((r && r.error) || 'Couldn’t work it out right now.')}</p>`; return; }
+    box.dataset.done = '1';
+    const list = (rows, val) => rows.length ? `<div class="make-rows">${rows.map((x) => `<div><a href="${wikiHref(x.name)}">${escapeHtml(x.name)}</a>
+        <span class="dim">x${fmt(Math.floor(x.n))}${x.skill ? ` · ${escapeHtml(x.skill)}` : ''}</span><b>${val(x)}</b></div>`).join('')}</div>` : '<p class="dim">Nothing yet.</p>';
+    const panels = [list(r.xp, (x) => `${fmtShort(Math.round(x.xp))} XP`), list(r.profit, (x) => `+${fmtShort(Math.round(x.profit))}`)];
+    box.innerHTML = `<p class="dim">${fmt(r.count)} things you could make right now. Tools and furnaces aren't checked.</p>
+      <div class="seg make-tabs"><button class="on" data-i="0">Most XP</button><button data-i="1">Most profit</button></div><div class="make-panel">${panels[0]}</div>`;
+    box.querySelector('.make-tabs').onclick = (e) => {
+      const b = e.target.closest('button[data-i]');
+      if (!b) return;
+      box.querySelectorAll('.make-tabs button').forEach((x) => x.classList.toggle('on', x === b));
+      box.querySelector('.make-panel').innerHTML = panels[+b.dataset.i];
+    };
+  };
 }
 
 async function renderBankValue() {
@@ -263,6 +309,18 @@ window.markOwnedLinks = async function (title) {
   if (n) toast(`Ticked the gear in your bank on this guide.`);
 };
 
+// "Drops from X (1/400), sold by Y (8,100 coins), made with 93 Magic, from quest Z"
+function sourcesText(src) {
+  if (!src) return '';
+  const parts = [];
+  if (src.drops.length) parts.push('drops from ' + src.drops.map((d) => `<a href="${wikiHref(d.source)}">${escapeHtml(d.source)}</a> <span class="dim">(${escapeHtml(d.rate)})</span>`).join(', '));
+  if (src.shops.length) parts.push('sold by ' + src.shops.map((s) => `<a href="${wikiHref(s.seller)}">${escapeHtml(s.seller)}</a>${s.price ? ` <span class="dim">(${fmt(+s.price || 0)} ${escapeHtml(s.currency.toLowerCase())})</span>` : ''}`).join(', '));
+  if (src.made) parts.push('made with ' + src.made.skills.map(([k, lv]) => `${lv} ${escapeHtml(k)}`).join(' + ') +
+    (src.made.mats.length ? ` from ${src.made.mats.map(([m, q]) => `${q > 1 ? `${fmt(q)} ` : ''}<a href="${wikiHref(m)}">${escapeHtml(m)}</a>`).join(', ')}` : ''));
+  if (src.quest) parts.push(`from the quest <a href="${wikiHref(src.quest)}">${escapeHtml(src.quest)}</a>`);
+  return parts.join('; ');
+}
+
 /* ---------------- boss pages: recommended gear (best and budget per slot) ---------------- */
 
 const SLOT_NAMES = { head: 'Head', cape: 'Cape', neck: 'Neck', ammo: 'Ammo', weapon: 'Weapon', body: 'Body', shield: 'Shield',
@@ -286,7 +344,7 @@ window.showGear = async function (title) {
     const cheap = u.cheapest ? `<div class="gear-cheap">Cheapest upgrade: <b>${escapeHtml(u.cheapest[2])}</b> for your ${SLOT_NAMES[u.cheapest[1]] || u.cheapest[1]}, about <b>${fmtShort(u.cheapest[0])}</b></div>` : '';
     return `<div class="gear-ups"><div class="gear-h">Your next upgrades</div>${cheap}` + u.upgrades.map((x) => `<div class="gear-up">
         <span class="gear-slot">${SLOT_NAMES[x.slot] || x.slot}</span>
-        <span>${x.have ? `<span class="dim">${escapeHtml(x.have)} →</span> ` : '<span class="dim">nothing yet →</span> '}${x.next.slice(0, 2).map((n) => `${item(n)} <span class="gear-price">${gp(n.price)}</span>`).join('<span class="dim"> or </span>')}</span></div>`).join('') + `</div>`;
+        <span>${x.have ? `<span class="dim">${escapeHtml(x.have)} →</span> ` : '<span class="dim">nothing yet →</span> '}${x.next.slice(0, 2).map((n) => `${item(n)} <span class="gear-price">${gp(n.price)}</span> <button class="linkbtn where" data-item="${escapeHtml(n.name)}">Where?</button>`).join('<span class="dim"> or </span>')}</span></div>`).join('') + `</div>`;
   };
   const opts = (list) => (list.length ? list.slice(0, 2).map(item).join('<span class="dim"> or </span>') : '<span class="dim">–</span>');
   const panel = (i) => (owned ? `<div class="gear-own">You own ${ownCount(i)[0]} of the ${ownCount(i)[1]} best picks for this setup.</div>` : '') +
@@ -302,6 +360,22 @@ window.showGear = async function (title) {
     <div class="gear-panel">${panel(0)}</div>
     <button class="linkbtn gear-more">Full strategy guide</button>`;
   box.querySelector('.gear-more').onclick = () => openPage(title + '/Strategies');
+  box.addEventListener('click', async (e) => {   // "Where?": how to get an upgrade (looked up only when asked)
+    const b = e.target.closest('.where');
+    if (!b) return;
+    const row = b.closest('.gear-up');
+    const old = row.querySelector('.where-info');
+    if (old && old.dataset.item === b.dataset.item) { old.remove(); return; }
+    if (old) old.remove();
+    b.textContent = '…';
+    const src = await api.item_sources(b.dataset.item);
+    b.textContent = 'Where?';
+    const info = document.createElement('div');
+    info.className = 'where-info';
+    info.dataset.item = b.dataset.item;
+    info.innerHTML = `<b>${escapeHtml(b.dataset.item)}</b>: ` + (sourcesText(src) || 'the wiki has no drop, shop or recipe for it; see its page.');
+    row.after(info);
+  });
   const tabs = box.querySelector('.gear-tabs');
   if (tabs) tabs.onclick = (e) => {
     const b = e.target.closest('button[data-i]');
