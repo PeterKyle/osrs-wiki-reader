@@ -4,6 +4,7 @@ Unofficial fan project. Article content comes from https://oldschool.runescape.w
 (CC BY-NC-SA 3.0) via the public MediaWiki API.
 """
 
+import base64
 import ctypes
 import ctypes.wintypes as wt
 import gzip
@@ -27,7 +28,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.2.2"
+VERSION = "1.3.0"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -40,6 +41,21 @@ WIKISYNC = "https://sync.runescape.wiki/runelite/player/{}/STANDARD"
 PLAYER_CACHE_SECONDS = 300
 PRICES = "https://prices.runescape.wiki/api/v1/osrs"
 UPDATE_REPO = "PeterKyle/osrs-wiki-reader"  # GitHub releases are checked for newer versions
+GEMINI = "https://generativelanguage.googleapis.com/v1beta"
+GEMINI_SYSTEM = (
+    "You are the assistant inside OSRS Wiki Reader, a desktop app for Old School RuneScape (OSRS) players. "
+    "Only help with OSRS; if asked about something else, say briefly that you can only help with OSRS. "
+    "Base your answer on the OSRS Wiki pages included with the question, which are current. If they don't cover it, "
+    "say so and answer from general OSRS knowledge, noting it may be out of date. Never mix up OSRS with RuneScape 3. "
+    "Be concise and practical: short paragraphs or bullet lists, with specific levels, items, locations and numbers. "
+    "When you mention a wiki page, write its title in double square brackets, like [[Fire cape]]. "
+    "If the player's stats are given, use them to tailor the answer (e.g. what they can do now and what they still need)."
+)
+STOPWORDS = set(
+    "a an the is are was were be been do does did i im i'm me my mine you your we our to of in on at for from with by "
+    "and or but how what whats what's where when which who why can could should would will get got go going best good "
+    "way ways need needed it its it's this that these those there here any some much many more most than then so if "
+    "into about as up out lvl please tell explain".split())
 SKILLS = ["Attack", "Hitpoints", "Mining", "Strength", "Agility", "Smithing", "Defence", "Herblore", "Fishing",
           "Ranged", "Thieving", "Cooking", "Prayer", "Crafting", "Firemaking", "Magic", "Fletching", "Woodcutting",
           "Runecraft", "Slayer", "Farming", "Construction", "Hunter", "Sailing"]
@@ -84,6 +100,7 @@ DEFAULTS = {
     "bookmarks": [],  # page titles
     "alerts": [],     # [{"id", "name", "dir": "above"|"below", "price"}]
     "timers": [],     # [{"id", "label", "minutes", "ends" (epoch s), "notified"}]
+    "gemini_key": None,  # Gemini API key, encrypted with Windows DPAPI (base64)
 }
 
 user32 = ctypes.windll.user32
@@ -116,12 +133,16 @@ def save_config(cfg):
         pass
 
 
-def http_json(url, method="GET"):
+def http_json(url, method="GET", body=None, headers=None, timeout=15):
     """Returns (status, parsed JSON or None). Network failures raise."""
-    req = urllib.request.Request(url, method=method,
-                                 headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
+    h = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
+    if body is not None:
+        body = json.dumps(body).encode()
+        h["Content-Type"] = "application/json"
+    h.update(headers or {})
+    req = urllib.request.Request(url, data=body, method=method, headers=h)
     try:
-        resp = urllib.request.urlopen(req, timeout=15)
+        resp = urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.HTTPError as e:
         resp = e
     with resp:
@@ -140,6 +161,33 @@ def api_get(**params):
     if data is None:
         raise IOError(f"wiki returned HTTP {status}")
     return data
+
+
+# ---- Windows DPAPI: encrypts the Gemini key so only this Windows user can read it ----
+class _Blob(ctypes.Structure):
+    _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+
+def _dpapi(data, protect):
+    crypt32 = ctypes.windll.crypt32
+    buf = ctypes.create_string_buffer(data, len(data))
+    blob_in = _Blob(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+    blob_out = _Blob()
+    fn = crypt32.CryptProtectData if protect else crypt32.CryptUnprotectData
+    if not fn(ctypes.byref(blob_in), None, None, None, None, 0x1, ctypes.byref(blob_out)):  # UI_FORBIDDEN
+        raise OSError("DPAPI failed")
+    try:
+        return ctypes.string_at(blob_out.pbData, blob_out.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+
+
+def protect_secret(text):
+    return base64.b64encode(_dpapi(text.encode(), True)).decode()
+
+
+def unprotect_secret(stored):
+    return _dpapi(base64.b64decode(stored), False).decode()
 
 
 def rsn_url(name):
@@ -731,6 +779,172 @@ class Api:
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
         threading.Timer(0.5, self._window.destroy).start()
         return {"ok": True}
+
+    # ---- "Ask" chat: Gemini (free tier) answering from OSRS Wiki pages ----
+    def _gemini_key(self):
+        try:
+            return unprotect_secret(self._cfg["gemini_key"]) if self._cfg.get("gemini_key") else None
+        except Exception:
+            return None
+
+    def _gemini_models(self, key):
+        """Stable Gemini Flash models this key can use, best first (names change often, so ask Google)."""
+        status, data = http_json(GEMINI + "/models?pageSize=200", headers={"x-goog-api-key": key})
+        if status != 200 or not isinstance(data, dict):
+            msg = ((data or {}).get("error") or {}).get("message", "") if isinstance(data, dict) else ""
+            raise PermissionError(msg or f"HTTP {status}")
+        found = []
+        for m in data.get("models", []):
+            hit = re.fullmatch(r"models/gemini-(\d+(?:\.\d+)?)-flash(-lite)?", m.get("name", ""))
+            if hit and "generateContent" in m.get("supportedGenerationMethods", []):
+                found.append((float(hit.group(1)), not hit.group(2), m["name"]))
+        found.sort(reverse=True)                       # newest first; Flash before Flash-Lite
+        names = [n for v, full, n in found if full] + [n for v, full, n in found if not full]
+        if any(m.get("name") == "models/gemini-flash-latest" for m in data.get("models", [])):
+            names.append("models/gemini-flash-latest")
+        return names
+
+    def gemini_status(self):
+        return {"hasKey": bool(self._cfg.get("gemini_key")), "model": getattr(self, "_gemini_model", None)}
+
+    def gemini_set_key(self, key):
+        key = (key or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_\-]{20,80}", key):
+            return {"error": "That doesn't look like a Gemini API key. It should be one long code, usually starting with \"AIza\"."}
+        try:
+            models = self._gemini_models(key)
+        except PermissionError as e:
+            return {"error": f"Google didn't accept that key: {e}"}
+        except Exception as e:
+            return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
+        if not models:
+            return {"error": "That key works, but no Gemini Flash models are available to it."}
+        self._gemini_list = models
+        self._cfg["gemini_key"] = protect_secret(key)
+        save_config(self._cfg)
+        return {"ok": True}
+
+    def gemini_clear_key(self):
+        self._cfg["gemini_key"] = None
+        self._gemini_list = None
+        save_config(self._cfg)
+        return {"ok": True}
+
+    def _find_pages(self, question):
+        """Wiki pages relevant to a question: real page titles found in its phrases, then full-text search."""
+        toks = re.findall(r"[a-z0-9'()\-]+", question.lower())
+        phrases = []
+        for n in (4, 3, 2, 1):
+            for i in range(len(toks) - n + 1):
+                w = toks[i:i + n]
+                if w[0] in STOPWORDS or w[-1] in STOPWORDS or (n == 1 and len(w[0]) < 3):
+                    continue
+                p = " ".join(w)
+                if p not in phrases:
+                    phrases.append(p)
+        multi, single = [], []
+        titles = [p[0].upper() + p[1:] for p in phrases][:50]
+        if titles:
+            q = api_get(action="query", titles="|".join(titles), redirects=1)["query"]
+            norm = {r["from"]: r["to"] for r in q.get("normalized", [])}
+            redir = {r["from"]: r["to"] for r in q.get("redirects", [])}
+            exists = {p["title"] for p in q.get("pages", []) if "missing" not in p and "invalid" not in p}
+            for t in titles:
+                t2 = norm.get(t, t)
+                t2 = redir.get(t2, t2)
+                if t2 in exists and t2 not in multi + single and "disambiguation" not in t2:
+                    (multi if " " in t.strip() else single).append(t2)
+        pages = multi[:3] if multi else single[:2]   # one-word pages ("Fire", "Cape") only if nothing better matched
+        keywords = " ".join(t for t in toks if t not in STOPWORDS)
+        if keywords and len(pages) < 3:
+            league = "league" in question.lower()
+            for r in api_get(action="query", list="search", srsearch=keywords, srlimit=6, srprop="")["query"]["search"]:
+                t = r["title"]
+                if t not in pages and (league or "League" not in t):
+                    pages.append(t)
+        return pages[:3]
+
+    def _page_text(self, title):
+        key = "x:" + title
+        if key not in self._cache:
+            q = api_get(action="query", prop="extracts", explaintext=1, exsectionformat="plain", titles=title, redirects=1)
+            p = (q.get("query", {}).get("pages") or [{}])[0]
+            self._cache[key] = {"title": p.get("title", title), "text": (p.get("extract") or "")[:6000]}
+        return self._cache[key]
+
+    def ask(self, question, history=None):
+        question = (question or "").strip()[:1000]
+        key = self._gemini_key()
+        if not key:
+            return {"error": "Add your free Gemini key first.", "needKey": True}
+        if not question:
+            return {"error": "Type a question first."}
+
+        try:
+            pages = [self._page_text(t) for t in self._find_pages(question)]
+            pages = [p for p in pages if p["text"]]
+        except Exception:
+            pages = []
+        context = "\n\n".join(f"=== OSRS Wiki page: {p['title']} ===\n{p['text']}" for p in pages)
+        player = self._player_summary()
+        system = GEMINI_SYSTEM + (f"\n\nThe player asking: {player}" if player else "")
+
+        contents = []
+        for turn in (history or [])[-6:]:
+            if turn.get("role") in ("user", "model") and turn.get("text"):
+                contents.append({"role": turn["role"], "parts": [{"text": str(turn["text"])[:4000]}]})
+        prompt = (f"Wiki pages for this question:\n\n{context}\n\n---\n\nQuestion: {question}" if context
+                  else f"(No matching wiki pages were found.)\n\nQuestion: {question}")
+        contents.append({"role": "user", "parts": [{"text": prompt}]})
+        body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": contents,
+                "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096}}
+
+        try:
+            models = getattr(self, "_gemini_list", None) or self._gemini_models(key)
+            self._gemini_list = models
+        except PermissionError as e:
+            return {"error": f"Google rejected your key ({e}). You can add a new one from the chat menu.", "needKey": True}
+        except Exception as e:
+            return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
+
+        limited = False
+        for model in models[:4]:
+            try:
+                status, data = http_json(f"{GEMINI}/{model}:generateContent", method="POST", body=body,
+                                         headers={"x-goog-api-key": key}, timeout=60)
+            except Exception as e:
+                return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
+            if status in (429, 404, 500, 503):     # free quota used up / model unavailable: try the next one
+                limited = limited or status == 429
+                continue
+            if status != 200 or not isinstance(data, dict):
+                msg = ((data or {}).get("error") or {}).get("message", "") if isinstance(data, dict) else ""
+                return {"error": f"Gemini returned an error: {msg or 'HTTP ' + str(status)}"}
+            cands = data.get("candidates") or []
+            parts = ((cands[0].get("content") or {}).get("parts") or []) if cands else []
+            text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+            if not text:
+                reason = (cands[0].get("finishReason") if cands else None) or (data.get("promptFeedback") or {}).get("blockReason")
+                return {"error": f"Gemini didn't give an answer ({reason or 'empty response'}). Try rephrasing."}
+            self._gemini_model = model.split("/")[-1]
+            return {"answer": text, "sources": [p["title"] for p in pages], "model": self._gemini_model}
+        if limited:
+            return {"error": "You've hit Gemini's free limit for now. Wait a minute and try again (if it keeps happening, the daily free limit is used up and resets tomorrow). It never charges you."}
+        return {"error": "Gemini is busy or unavailable right now. Try again in a moment."}
+
+    def _player_summary(self):
+        me = self._cfg.get("me")
+        if not me:
+            return ""
+        p = self.player(me)  # cached for a few minutes
+        if "error" in p:
+            return ""
+        levels = ", ".join(f"{s['name']} {s['level']}" for s in p["skills"] if s["name"] != "Overall" and s["xp"] >= 0)
+        text = f"{p['name']}. Levels: {levels}."
+        if p.get("sync"):
+            done = [q for q, v in p["sync"]["quests"].items() if v == 2]
+            text += f" Quests completed ({len(done)}): {', '.join(sorted(done))[:3000]}."
+        return text
 
     # ---- bookmarks ----
     def toggle_bookmark(self, title):

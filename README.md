@@ -15,6 +15,7 @@ A small, fast desktop window for the [Old School RuneScape Wiki](https://oldscho
 - **Grand Exchange**: live prices and a price chart on item pages, a watchlist, and price alerts as Windows notifications.
 - **XP calculator** on skill pages, with training methods from the wiki.
 - **Farm run timers** with notifications when your crops are ready.
+- **Ask about OSRS**: chat with Google's Gemini, answered from the matching wiki pages (and your stats). Free: you connect your own free Gemini key from [Google AI Studio](https://aistudio.google.com/apikey), with no billing needed.
 
 Quest and diary progress needs the free **WikiSync** plugin enabled in RuneLite.
 
