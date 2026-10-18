@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.6"
+VERSION = "1.3.7"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -1491,9 +1491,16 @@ class Api:
         return self.get_state()
 
     # ---- window controls ----
+    def _set_topmost(self, on):
+        """Always-on-top straight through Windows. Not pywebview's window.on_top: that sets a .NET property from
+        this (worker) thread while holding the GIL, and the UI thread then needs the GIL to run pywebview's
+        Python event handlers, so the app freezes. ctypes releases the GIL while SetWindowPos waits."""
+        if self._hwnd:   # HWND_TOPMOST / HWND_NOTOPMOST; NOMOVE | NOSIZE | NOACTIVATE
+            user32.SetWindowPos(self._hwnd, ctypes.c_void_p(-1 if on else -2), 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
+
     def toggle_pin(self):
         self._cfg["pinned"] = not self._cfg["pinned"]
-        self._window.on_top = self._cfg["pinned"]
+        self._set_topmost(self._cfg["pinned"])
         save_config(self._cfg)
         return self._cfg["pinned"]
 
@@ -1519,12 +1526,12 @@ class Api:
         if on and not self._mini:
             self._full_rect = (r.left, r.top, r.right, r.bottom)
             self._mini = True
-            self._window.on_top = True
+            self._set_topmost(True)
             w = int(440 * self._scale())
             user32.SetWindowPos(hwnd, None, r.left, r.top, w, int(88 * self._scale()), 0x0004 | 0x0010)
         elif not on and self._mini:
             self._mini = False
-            self._window.on_top = self._cfg["pinned"]
+            self._set_topmost(self._cfg["pinned"])
             left, top, right, bottom = self._full_rect
             # keep the full window where the mini strip was moved to
             user32.SetWindowPos(hwnd, None, r.left, r.top, right - left, bottom - top, 0x0004 | 0x0010)
