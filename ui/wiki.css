@@ -101,6 +101,23 @@
 .wiki .wikitable > tbody > tr > td + td, .wiki .wikitable > tbody > tr > th + th { box-shadow: inset 1px 0 0 var(--line); }
 .wiki .wikitable > tbody > tr:hover > td { background: var(--fill); }
 .wiki .wikitable caption { font-weight: 500; padding: 8px; color: var(--text-2); }
+/* Narrow page column (small window, or the chat docked beside it): compact tables so more of them fit.
+   The wiki's fixed column widths and no-wrap headings are what usually push a table off the edge. */
+@container (max-width: 820px) {
+  .wiki table.wikitable, .wiki table.lighttable { font-size: .84em; line-height: 1.5; }
+  .wiki .wikitable > tbody > tr > th, .wiki .wikitable > tbody > tr > td,
+  .wiki .lighttable > tbody > tr > th, .wiki .lighttable > tbody > tr > td { padding: 6px 8px; }
+  .wiki .wikitable > tbody > tr > th, .wiki .lighttable > tbody > tr > th { white-space: normal; }
+  .wiki .table-wrap th, .wiki .table-wrap td { width: auto !important; min-width: 0 !important; }
+  .wiki .table-wrap td [style*="nowrap"] { white-space: normal !important; }
+}
+/* still wider than the page: fade the side with more to see (scroll with Shift + wheel or the trackpad) */
+.wiki .table-wrap.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+.wiki .table-wrap.more-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent); }
+.wiki .table-wrap.more-l.more-r {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+}
 .wiki th.sortable-th { cursor: pointer; user-select: none; white-space: nowrap; transition: color var(--fast) var(--ease); }
 .wiki th.sortable-th:hover { color: var(--text); }
 .wiki th.sortable-th::after { content: "↕"; margin-left: 5px; font-size: .85em; color: var(--text-3); }

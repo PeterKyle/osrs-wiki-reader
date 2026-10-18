@@ -249,8 +249,19 @@ function wrapTables(root) {
     w.className = 'table-wrap';
     t.parentNode.insertBefore(w, t);
     w.appendChild(t);
+    w.addEventListener('scroll', () => tableEdges(w), { passive: true });
   });
+  requestAnimationFrame(() => root.querySelectorAll('.table-wrap').forEach(tableEdges));
 }
+
+// Mark which sides of a too-wide table have more columns to scroll to (the CSS fades those edges).
+function tableEdges(w) {
+  const more = w.scrollWidth - w.clientWidth;
+  w.classList.toggle('more-l', more > 1 && w.scrollLeft > 1);
+  w.classList.toggle('more-r', more > 1 && w.scrollLeft < more - 1);
+}
+// the page column changes width with the window and the docked chat
+new ResizeObserver(() => els.article.querySelectorAll('.table-wrap').forEach(tableEdges)).observe(els.article);
 
 function cellValue(cell) {
   if (!cell) return '';
