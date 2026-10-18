@@ -361,10 +361,48 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === 'Enter' && i >= 0) { e.preventDefault(); chooseMode(items[i].dataset.v); }
 }, true);
 
+// Docked side panel: the page narrows to sit beside the chat when there's room for both; otherwise it floats.
+const DOCK = { minPage: 480, minW: 340, maxW: 760 };
+let askW = 420;
+try { askW = Number(localStorage.getItem('askWidth')) || 420; } catch (e) { /* no storage: default width */ }
+function updateDock() {
+  const docked = !chat.pop.hidden && !isMini() && window.innerWidth >= DOCK.minW + DOCK.minPage;
+  if (docked) {
+    const w = Math.round(Math.max(DOCK.minW, Math.min(askW, DOCK.maxW, window.innerWidth - DOCK.minPage)));
+    document.documentElement.style.setProperty('--ask-w', w + 'px');
+  }
+  document.body.classList.toggle('ask-docked', docked);
+}
+window.addEventListener('resize', updateDock);
+const askResize = $('askResize');
+askResize.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  askResize.setPointerCapture(e.pointerId);
+  askResize.classList.add('drag');
+  document.body.classList.add('ask-resizing');
+});
+askResize.addEventListener('pointermove', (e) => {
+  if (!askResize.hasPointerCapture(e.pointerId)) return;
+  askW = window.innerWidth - e.clientX;
+  updateDock();
+});
+const endResize = (e) => {
+  if (!askResize.hasPointerCapture(e.pointerId)) return;
+  askResize.releasePointerCapture(e.pointerId);
+  askResize.classList.remove('drag');
+  document.body.classList.remove('ask-resizing');
+  askW = Math.round(Math.max(DOCK.minW, Math.min(askW, DOCK.maxW)));
+  try { localStorage.setItem('askWidth', String(askW)); } catch (err) { /* not remembered */ }
+};
+askResize.addEventListener('pointerup', endResize);
+askResize.addEventListener('pointercancel', endResize);
+
 async function openAsk() {
   closePops();
   hideSelBtn();
   chat.pop.hidden = false;
+  updateDock();
   $('btnAsk').classList.add('on');
   refreshMode();   // may look up your account type; doesn't hold up the chat
   const st = await api.gemini_status();
@@ -372,6 +410,7 @@ async function openAsk() {
 }
 function closeAsk() {
   chat.pop.hidden = true;
+  updateDock();
   $('btnAsk').classList.remove('on');
 }
 
