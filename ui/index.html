@@ -142,6 +142,21 @@
     </form>
   </section>
 
+  <div class="modal-scrim" id="updModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="updTitle">
+      <img class="modal-logo" src="logo-64.png" srcset="logo-64.png 1x, logo-96.png 1.5x, logo-128.png 2x" alt="">
+      <h2 id="updTitle">Update available</h2>
+      <p class="modal-sub" id="updSub"></p>
+      <div class="modal-notes" id="updNotes"></div>
+      <div class="modal-progress" id="updProgress" hidden><span></span></div>
+      <p class="modal-msg" id="updMsg"></p>
+      <div class="modal-actions">
+        <button class="btn small" id="updLater">Later</button>
+        <button class="btn" id="updNow">Update now</button>
+      </div>
+    </div>
+  </div>
+
   <div class="pop" id="tocPop" hidden><div class="pop-h">Sections</div><ul id="tocList"></ul></div>
 
   <div class="pop settings" id="setPop" hidden>

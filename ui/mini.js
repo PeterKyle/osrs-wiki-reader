@@ -84,6 +84,10 @@ $('btnMini').onclick = () => setMini(!mini);
 
 /* ---------------- auto-update ---------------- */
 
+let pendingUpdate = null;
+let installing = false;
+const fmtDate = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+
 async function checkForUpdate(manual = false) {
   $('updStatus').textContent = manual ? 'checking…' : '';
   const u = await api.check_update();
@@ -91,25 +95,79 @@ async function checkForUpdate(manual = false) {
     $('updStatus').textContent = manual ? 'you have the latest version' : '';
     return;
   }
+  pendingUpdate = u;
   $('updStatus').textContent = `v${u.version} available`;
+  showUpdateBanner(u);
+  if (!isMini()) openUpdateModal(u);
+}
+
+// small reminder on the home screen, for after "Later"
+function showUpdateBanner(u) {
   const b = $('updateBanner');
   b.hidden = false;
   b.innerHTML = `
     <span class="ub-icon">${svgIcon('i-refresh')}</span>
     <span class="ub-text"><b>Version ${escapeHtml(u.version)} is available</b><span>You have ${escapeHtml(state.version)}.</span></span>
-    ${u.canInstall ? '<button class="btn small" id="ubInstall">Update now</button>' : `<a href="${escapeHtml(u.page || '')}" data-ext>Download</a>`}
-    <button class="ub-x" id="ubLater" title="Later">${svgIcon('i-x')}</button>`;
+    <button class="btn small" id="ubOpen">See what's new</button>
+    <button class="ub-x" id="ubLater" title="Hide">${svgIcon('i-x')}</button>`;
+  $('ubOpen').onclick = () => openUpdateModal(u);
   $('ubLater').onclick = () => { b.hidden = true; };
-  const inst = $('ubInstall');
-  if (inst) inst.onclick = async () => {
-    inst.disabled = true;
-    inst.textContent = 'Downloading…';
-    const r = await api.install_update();
-    if (r.error) { toast(r.error); inst.disabled = false; inst.textContent = 'Update now'; return; }
-    inst.textContent = 'Restarting…';
-  };
-  if (manual) goHome(true);
 }
+
+function openUpdateModal(u) {
+  closePops();
+  $('updSub').innerHTML = `Version <b>${escapeHtml(u.version)}</b> is ready. You have ${escapeHtml(state.version)}.`;
+  $('updNotes').innerHTML = (u.releases || []).map((r, i) => `
+    <div class="rel-head"><b>What's new in ${escapeHtml(r.version)}</b>${i === 0 ? '<span class="new">Latest</span>' : ''}<span>${escapeHtml(fmtDate(r.date))}</span></div>
+    ${renderMarkdown(r.notes.replace(/^##\s*/gm, '#### ')) || '<p>Small fixes and improvements.</p>'}`).join('');
+  $('updProgress').hidden = true;
+  $('updProgress').firstElementChild.style.width = '0';
+  $('updMsg').textContent = u.canInstall ? 'Takes a few seconds. Your settings are kept.' : '';
+  $('updMsg').classList.remove('err');
+  const now = $('updNow');
+  now.disabled = false;
+  now.textContent = u.canInstall ? 'Update now' : 'Download';
+  $('updLater').disabled = false;
+  $('updModal').hidden = false;
+  now.focus();
+}
+function closeUpdateModal() {
+  if (!installing) $('updModal').hidden = true;
+}
+
+window.updateProgress = function (p) {
+  $('updProgress').hidden = false;
+  $('updProgress').firstElementChild.style.width = `${Math.round(p * 100)}%`;
+  $('updMsg').textContent = `Downloading… ${Math.round(p * 100)}%`;
+};
+
+$('updNow').onclick = async () => {
+  const u = pendingUpdate;
+  if (!u) return;
+  if (!u.canInstall) { api.open_external(u.page); return; }
+  installing = true;
+  $('updNow').disabled = true;
+  $('updLater').disabled = true;
+  $('updNow').textContent = 'Updating…';
+  updateProgress(0);
+  const r = await api.install_update();
+  if (r.error) {
+    installing = false;
+    $('updNow').disabled = false;
+    $('updLater').disabled = false;
+    $('updNow').textContent = 'Try again';
+    $('updMsg').textContent = r.error;
+    $('updMsg').classList.add('err');
+    return;
+  }
+  updateProgress(1);
+  $('updMsg').textContent = 'Restarting with the new version…';
+};
+$('updLater').onclick = closeUpdateModal;
+$('updModal').addEventListener('mousedown', (e) => { if (e.target === $('updModal')) closeUpdateModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('updModal').hidden) { e.stopPropagation(); closeUpdateModal(); }
+}, true);
 $('btnCheckUpdate').onclick = () => checkForUpdate(true);
 window.addEventListener('pywebviewready', () => setTimeout(() => checkForUpdate(false), 4000));
 document.addEventListener('keydown', (e) => {

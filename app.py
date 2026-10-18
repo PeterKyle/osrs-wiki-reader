@@ -30,7 +30,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -104,6 +104,13 @@ def pacific_offset(now):
         return first + ((6 - time.gmtime(first).tm_wday) % 7 + 7 * (nth - 1)) * 86400
 
     return 7 if sunday(3, 2) + 10 * 3600 <= now < sunday(11, 1) + 9 * 3600 else 8
+
+
+def clean_release_notes(body):
+    """GitHub release text minus the 'how to download' lines, which don't belong in the in-app update pop-up."""
+    keep = [line for line in body.replace("\r", "").split("\n")
+            if not re.search(r"(?i)download \*\*osrs\.wiki\.reader|windows may warn|run anyway", line)]
+    return "\n".join(keep).strip()[:3000]
 
 
 def nice_model(name):
@@ -747,7 +754,23 @@ class Api:
             return {"available": False, "latest": tag}
         self._update = {"version": tag, "url": asset["browser_download_url"], "size": asset.get("size"),
                         "digest": asset.get("digest")}
-        return {"available": True, "version": tag, "notes": (rel.get("body") or "")[:600],
+        # Patch notes for every version newer than this one (someone may have skipped a few), newest first
+        notes = []
+        try:
+            st, rels = http_json(f"https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=20")
+            for r in rels if st == 200 and isinstance(rels, list) else []:
+                v = (r.get("tag_name") or "").lstrip("vV")
+                if r.get("draft") or r.get("prerelease") or not ver(VERSION) < ver(v) <= ver(tag):
+                    continue
+                notes.append({"version": v, "date": (r.get("published_at") or "")[:10],
+                              "notes": clean_release_notes(r.get("body") or "")})
+        except Exception:
+            pass
+        if not notes:
+            notes = [{"version": tag, "date": (rel.get("published_at") or "")[:10],
+                      "notes": clean_release_notes(rel.get("body") or "")}]
+        notes.sort(key=lambda n: ver(n["version"]), reverse=True)
+        return {"available": True, "version": tag, "releases": notes[:8],
                 "canInstall": bool(getattr(sys, "frozen", False)), "page": rel.get("html_url")}
 
     def install_update(self):
@@ -760,10 +783,19 @@ class Api:
         try:
             req = urllib.request.Request(up["url"], headers={"User-Agent": USER_AGENT})
             h = hashlib.sha256()
+            done, last = 0, 0.0
             with urllib.request.urlopen(req, timeout=60) as resp, open(new, "wb") as f:
+                total = up.get("size") or int(resp.headers.get("Content-Length") or 0)
                 while chunk := resp.read(1 << 16):
                     f.write(chunk)
                     h.update(chunk)
+                    done += len(chunk)
+                    if total and time.time() - last > 0.1:   # drive the pop-up's progress bar
+                        last = time.time()
+                        try:
+                            self._window.evaluate_js(f"window.updateProgress && updateProgress({done / total:.3f})")
+                        except Exception:
+                            pass
             if up.get("size") and os.path.getsize(new) != up["size"]:
                 raise IOError("download was incomplete")
             if up.get("digest", "").startswith("sha256:") and h.hexdigest() != up["digest"][7:]:
