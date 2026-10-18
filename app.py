@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.4.1"
+VERSION = "1.4.2"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -427,6 +427,26 @@ def load_config():
     return cfg
 
 
+# Wise Old Man chat history: the 10 most recent conversations, kept on this PC only
+CHATS_FILE = os.path.join(CONFIG_DIR, "chats.json")
+MAX_CHATS = 10
+MAX_CHAT_MESSAGES = 100
+
+
+def _clean_message(m):
+    """A chat message as the page sends it, reduced to the fields and sizes we keep."""
+    if not isinstance(m, dict) or m.get("role") not in ("user", "model"):
+        return None
+    out = {"role": m["role"], "text": str(m.get("text") or "")[:20000]}
+    if isinstance(m.get("sources"), list):
+        out["sources"] = [str(x)[:200] for x in m["sources"][:12]]
+    ctx = m.get("ctx")
+    if isinstance(ctx, dict) and (ctx.get("page") or ctx.get("selection")):
+        out["ctx"] = {"page": str(ctx.get("page") or "")[:200] or None,
+                      "selection": str(ctx.get("selection") or "")[:2000] or None}
+    return out
+
+
 def save_config(cfg):
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -568,6 +588,7 @@ class Api:
         self._timed = {}      # url -> (fetched_at, data) for short-lived price data
         self._lock = threading.Lock()
         self._mem_lock = threading.Lock()   # guards the in-memory caches (pywebview runs API calls on parallel threads)
+        self._chats_lock = threading.Lock()
         self._notifier = None
         self._mini = False
         self._full_rect = None
@@ -1445,6 +1466,61 @@ class Api:
     def _answer_mode(self):
         mode = self._cfg.get("ask_mode") or "auto"
         return (self._my_account_type() or "regular") if mode == "auto" else mode
+
+    # ---- Wise Old Man chat history (last MAX_CHATS conversations) ----
+    def _read_chats(self):
+        try:
+            with open(CHATS_FILE, encoding="utf-8") as f:
+                chats = json.load(f)
+            return [c for c in chats if isinstance(c, dict) and c.get("id")] if isinstance(chats, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def _write_chats(self, chats):
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            tmp = CHATS_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(chats, f, ensure_ascii=False)
+            os.replace(tmp, CHATS_FILE)   # never leaves a half-written file
+        except OSError:
+            pass
+
+    def chats_list(self):
+        """Newest first: id, title, when it was last used and how many questions it has."""
+        with self._chats_lock:
+            chats = self._read_chats()
+        return [{"id": c["id"], "title": c.get("title") or "Chat", "updated": c.get("updated", 0),
+                 "questions": sum(1 for m in c.get("messages", []) if m.get("role") == "user")}
+                for c in sorted(chats, key=lambda c: c.get("updated", 0), reverse=True)]
+
+    def chat_load(self, chat_id):
+        with self._chats_lock:
+            for c in self._read_chats():
+                if c["id"] == chat_id:
+                    return {"id": c["id"], "title": c.get("title"), "messages": c.get("messages", [])}
+        return None
+
+    def chat_save(self, chat_id, messages):
+        """Create or update a conversation; only the MAX_CHATS most recent are kept."""
+        chat_id = re.sub(r"[^\w-]", "", str(chat_id))[:40]
+        msgs = [m for m in (_clean_message(x) for x in (messages or [])) if m][-MAX_CHAT_MESSAGES:]
+        if not chat_id or not msgs:
+            return False
+        first = next((m["text"] for m in msgs if m["role"] == "user"), "Chat")
+        title = re.sub(r"\s+", " ", first).strip()
+        title = title if len(title) <= 60 else title[:57].rstrip() + "…"
+        with self._chats_lock:
+            chats = [c for c in self._read_chats() if c["id"] != chat_id]
+            chats.append({"id": chat_id, "title": title, "updated": time.time(), "messages": msgs})
+            chats.sort(key=lambda c: c.get("updated", 0), reverse=True)
+            self._write_chats(chats[:MAX_CHATS])
+        return True
+
+    def chat_delete(self, chat_id):
+        with self._chats_lock:
+            self._write_chats([c for c in self._read_chats() if c["id"] != chat_id])
+        return self.chats_list()
 
     def ask_mode_info(self):
         """For the chat's "playing as" picker: the saved choice and what Auto resolves to."""

@@ -820,6 +820,9 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 'f') {
     e.preventDefault();
     openFind();
+  } else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+    e.preventDefault();
+    if (window.newChat) newChat();
   } else if (e.key === 'F3') {
     e.preventDefault();
     if (find.bar.hidden) openFind(); else setFindCurrent(find.cur + (e.shiftKey ? -1 : 1));

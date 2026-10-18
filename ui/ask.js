@@ -2,7 +2,8 @@
 /* "Ask" chat: questions answered by Gemini (user's own free key) using OSRS Wiki pages. */
 
 const AI_STUDIO = 'https://aistudio.google.com/apikey';
-const chat = { pop: $('askPop'), body: $('askBody'), input: $('askInput'), history: [], busy: false };
+const chat = { pop: $('askPop'), body: $('askBody'), input: $('askInput'), history: [], busy: false, convId: null };
+const newChatId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 // Small, safe Markdown subset: paragraphs, lists, tables, bold/italic/code, [[wiki links]] and [text](https://…)
 const HTML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
@@ -177,7 +178,7 @@ function showChat() {
   $('askInputRow').hidden = false;
   chat.body.innerHTML = chat.history.length ? '' : welcomeHtml();
   chat.history.forEach((m) => addBubble(m.role, m.text, m.sources, false, m.ctx));
-  if (chat.pending) {   // an answer is still on its way: keep the question and the incoming answer on screen
+  if (chat.pending && chat.pendingFor === chat.history) {   // an answer is on its way for this chat: keep it on screen
     addBubble('user', chat.pendingQ, [], false, chat.pendingCtx);
     chat.body.appendChild(chat.pending);
   }
@@ -213,6 +214,10 @@ async function send(question) {
   question = question.trim();
   if (!question || chat.busy) return;
   chat.busy = true;
+  const hist = chat.history;   // the answer belongs to this chat, even if you switch to another meanwhile
+  if (!chat.convId) chat.convId = newChatId();
+  const convId = chat.convId;
+  chat.pendingFor = hist;
   chat.input.value = '';
   autoGrow();
   const ctx = activeContext();
@@ -229,7 +234,7 @@ async function send(question) {
   scrollChat();
   let r;
   try {
-    r = await api.ask(question, chat.history.map(({ role, text, sources }) => ({ role, text, sources })), ctx);
+    r = await api.ask(question, hist.map(({ role, text, sources }) => ({ role, text, sources })), ctx);
   } catch (err) {
     r = { error: 'Something went wrong sending that. Please try again.' };
   } finally {
@@ -237,19 +242,23 @@ async function send(question) {
     chat.pending = null;
     chat.busy = false;   // never leave the chat stuck if a request fails
   }
-  if (r.needKey) { showSetup(r.error); return; }
+  const current = chat.history === hist;
+  if (r.needKey) { if (current) showSetup(r.error); return; }
   if (r.error) {
+    if (!current) return;
     const d = addBubble('model', '');
     d.classList.add('err');
     d.textContent = r.error;
     return;
   }
   const answer = r.answer || (r.open ? `Opening ${r.open.title}${r.open.anchor ? ` (${r.open.anchor})` : ''}.` : '');
-  chat.history.push({ role: 'user', text: question, ctx }, { role: 'model', text: answer, sources: r.sources });
+  hist.push({ role: 'user', text: question, ctx }, { role: 'model', text: answer, sources: r.sources });
+  if (hist.length > 100) hist.splice(0, hist.length - 100);
+  api.chat_save(convId, hist);   // chat history: the last 10 chats are kept on this PC
+  if (!current) return;          // you've moved to another chat; this one is saved for later
   $('askModel').textContent = r.model ? `AI · ${r.model.replace(/^gemini-([\d.]+)-flash(-lite)?$/, (m, v, l) => `Gemini ${v} Flash${l ? '-Lite' : ''}`)}` : '';
   addBubble('model', answer, r.sources);
-  // keep a long session light: only the last 50 exchanges stay in memory and on screen
-  if (chat.history.length > 100) chat.history.splice(0, chat.history.length - 100);
+  // keep a long session light: only the last 50 exchanges stay on screen
   const bubbles = chat.body.querySelectorAll('.msg');
   for (let i = 0; i < bubbles.length - 100; i++) bubbles[i].remove();
   if (r.open) {
@@ -324,6 +333,7 @@ async function refreshMode() {
 }
 
 function openModeMenu() {
+  closeHistMenu();
   renderModeMenu();
   modeMenu.hidden = false;
   modeBtn.setAttribute('aria-expanded', 'true');
@@ -432,7 +442,69 @@ $('btnSettings').addEventListener('click', async () => showAskLimit(await api.ge
 
 $('btnAsk').onclick = () => (chat.pop.hidden ? openAsk() : closeAsk());
 $('askClose').onclick = closeAsk;
-$('askClear').onclick = () => { chat.history = []; showChat(); };
+// New chat (button or Ctrl+N): the current one is already saved in the history
+window.newChat = async function () {
+  closeHistMenu();
+  chat.history = [];
+  chat.convId = null;
+  if (isMini()) await setMini(false);
+  if (chat.pop.hidden) openAsk(); else showChat();
+};
+$('askClear').onclick = () => newChat();
+
+// Chat history: your last 10 chats, newest first. Click one to carry on with it.
+const histBtn = $('askHistBtn'), histMenu = $('askHistMenu');
+function ago(t) {
+  const s = Date.now() / 1000 - t;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  const d = Math.floor(s / 86400);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+async function openHistMenu() {
+  closeModeMenu();
+  const list = await api.chats_list();
+  histMenu.innerHTML = list.length
+    ? list.map((c) => `<li role="option" data-id="${escapeHtml(c.id)}" aria-selected="${c.id === chat.convId}">
+        <b>${escapeHtml(c.title)}</b><small>${ago(c.updated)} · ${c.questions} question${c.questions === 1 ? '' : 's'}</small>
+        <button class="hist-del" type="button" data-del="${escapeHtml(c.id)}" title="Delete this chat">${svgIcon('i-close')}</button></li>`).join('') +
+      '<li class="hist-note">Your last 10 chats, saved on this PC only.</li>'
+    : '<li class="hist-empty">No saved chats yet. Ask the Wise Old Man something and it will show up here.</li>';
+  histMenu.hidden = false;
+  histBtn.setAttribute('aria-expanded', 'true');
+}
+function closeHistMenu() {
+  histMenu.hidden = true;
+  histBtn.setAttribute('aria-expanded', 'false');
+}
+async function loadChat(id) {
+  const c = await api.chat_load(id);
+  if (!c) { toast('That chat is no longer saved.'); return; }
+  chat.history = c.messages;
+  chat.convId = c.id;
+  const st = await api.gemini_status();
+  if (st.hasKey) showChat(); else showSetup();
+}
+histBtn.onclick = (e) => { e.stopPropagation(); histMenu.hidden ? openHistMenu() : closeHistMenu(); };
+histMenu.onclick = async (e) => {
+  const del = e.target.closest('[data-del]');
+  if (del) {
+    e.stopPropagation();
+    await api.chat_delete(del.dataset.del);
+    if (del.dataset.del === chat.convId) chat.convId = null;   // still on screen; a new question saves it as a new chat
+    openHistMenu();
+    return;
+  }
+  const li = e.target.closest('li[data-id]');
+  if (li) { closeHistMenu(); loadChat(li.dataset.id); }
+};
+document.addEventListener('mousedown', (e) => {
+  if (!histMenu.hidden && !e.target.closest('.ask-hist')) closeHistMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (!histMenu.hidden && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeHistMenu(); histBtn.focus(); }
+}, true);
 $('askKeyBtn').onclick = async () => {
   if (!confirm('Remove your saved Gemini key from this PC? You can add a new one right after.')) return;
   await api.gemini_clear_key();
