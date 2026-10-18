@@ -212,7 +212,7 @@ select { height: 32px; padding: 0 10px; font-size: var(--fs-sm); }
   user-select: none;
 }
 .brand { display: flex; align-items: center; gap: 8px; color: var(--text); font: 600 13px/1 var(--font-display); letter-spacing: -.01em; white-space: nowrap; }
-.brand .ic { width: 17px; height: 17px; color: var(--accent); }
+.brand .logo-sm { width: 20px; height: 20px; flex: none; }
 .page-title { flex: 1; min-width: 0; color: var(--text-3); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .page-title::before { content: "/"; margin-right: 8px; color: var(--line-strong); }
 .page-title:empty::before { content: none; }
@@ -278,10 +278,9 @@ select { height: 32px; padding: 0 10px; font-size: var(--fs-sm); }
 
 .home { max-width: 680px; margin: 0 auto; padding: 36px 24px 32px; }
 .hero { text-align: center; padding: 6px 0 26px; }
-.hero-ic {
-  width: 52px; height: 52px; padding: 12px; border-radius: 16px; box-sizing: border-box;
-  fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
-  background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--line);
+.hero-logo {
+  display: block; width: 64px; height: 64px; margin: 0 auto;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .28)) drop-shadow(0 1px 2px rgba(0, 0, 0, .18));
 }
 .hero h1 { font: 600 24px/1.2 var(--font-display); letter-spacing: -.02em; margin: 14px 0 6px; color: var(--text); }
 .hero p { margin: 0; color: var(--text-2); }

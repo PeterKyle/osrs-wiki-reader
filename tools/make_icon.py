@@ -126,7 +126,12 @@ def write_ico(path, images):
         f.write(out + b''.join(blobs))
 
 if __name__ == '__main__':
-    out_ico, preview = sys.argv[1], sys.argv[2]
+    if sys.argv[1] == '--png':          # make_icon.py --png <out dir> <size> [<size> ...]
+        import os
+        for s in map(int, sys.argv[3:]):
+            render(s).save(os.path.join(sys.argv[2], f'logo-{s}.png'))
+        sys.exit()
+    out_ico, preview = sys.argv[1], sys.argv[2]   # make_icon.py <out.ico> <preview.png>
     sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256]
     imgs = [render(s) for s in sizes]
     write_ico(out_ico, imgs)
