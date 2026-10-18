@@ -144,7 +144,7 @@ async function send(question) {
   }
   const answer = r.answer || (r.open ? `Opening ${r.open.title}${r.open.anchor ? ` (${r.open.anchor})` : ''}.` : '');
   chat.history.push({ role: 'user', text: question }, { role: 'model', text: answer, sources: r.sources });
-  $('askModel').textContent = r.model ? `AI assistant · ${r.model.replace(/^gemini-([\d.]+)-flash(-lite)?$/, (m, v, l) => `Gemini ${v} Flash${l ? '-Lite' : ''}`)}` : '';
+  $('askModel').textContent = r.model ? `AI · ${r.model.replace(/^gemini-([\d.]+)-flash(-lite)?$/, (m, v, l) => `Gemini ${v} Flash${l ? '-Lite' : ''}`)}` : '';
   addBubble('model', answer, r.sources);
   if (r.open) {
     // Gemini asked to open a page: show it (scrolled to the section) and tuck the chat away. ✦ brings it back.
@@ -174,35 +174,86 @@ function autoGrow() {
 }
 
 /* "Playing as": Auto (from the account set as "This is me") or a fixed account type */
-const MODE_SHORT = { regular: 'Main', ironman: 'Ironman', hardcore: 'Hardcore', ultimate: 'Ultimate' };
+const MODES = [   // value, name, short label, one-line description
+  ['regular', 'Main', 'Main', 'Normal advice, Grand Exchange allowed'],
+  ['ironman', 'Ironman', 'Ironman', 'No Grand Exchange or trading'],
+  ['hardcore', 'Hardcore Ironman', 'Hardcore', 'Ironman rules, plus warnings about risky content'],
+  ['ultimate', 'Ultimate Ironman', 'Ultimate', 'Ironman rules, and no bank'],
+  ['group', 'Group Ironman', 'Group Iron', 'Trade only within your group, group storage'],
+  ['hcgim', 'Hardcore Group Ironman', 'HC Group Iron', 'Group rules, plus shared lives'],
+];
+const MODE_INFO = Object.fromEntries(MODES.map(([v, name, short, desc]) => [v, { name, short, desc }]));
 const MODE_NOTES = {
   ironman: 'Advice is for an <b>Ironman</b>: no Grand Exchange or trading.',
   hardcore: 'Advice is for a <b>Hardcore Ironman</b>: no Grand Exchange or trading, and I’ll warn you about risky content.',
   ultimate: 'Advice is for an <b>Ultimate Ironman</b>: no Grand Exchange, trading or bank.',
+  group: 'Advice is for a <b>Group Ironman</b>: trading only within your group, no Grand Exchange.',
+  hcgim: 'Advice is for a <b>Hardcore Group Ironman</b>: group-only trading, and I’ll warn you about risky content.',
 };
 chat.mode = 'regular';
+let modeInfo = { mode: 'auto' };
 function modeNote() { return MODE_NOTES[chat.mode] || ''; }
 
+const modeBtn = $('askModeBtn'), modeMenu = $('askModeMenu');
+
+function renderModeMenu() {
+  const autoDesc = modeInfo.me
+    ? `From ${escapeHtml(modeInfo.me)}: ${MODE_INFO[modeInfo.detected || 'regular'].name}`
+    : 'Set your account in the Character tab first';
+  const item = (v, name, desc) => `<li role="option" data-v="${v}" aria-selected="${modeInfo.mode === v}">
+      <b>${name}</b><small>${desc}</small><svg class="ic"><use href="#i-check"/></svg></li>`;
+  modeMenu.innerHTML = item('auto', 'Auto', autoDesc) + '<li class="sep"></li>' +
+    MODES.map(([v, name, , desc]) => item(v, name, desc)).join('');
+}
+
 async function refreshMode() {
-  const info = await api.ask_mode_info();
-  const sel = $('askMode');
-  sel.querySelector('option[value="auto"]').textContent = info.me ? `Auto · ${MODE_SHORT[info.detected] || 'Main'}` : 'Auto';
-  sel.value = info.mode;
-  chat.mode = info.mode === 'auto' ? (info.detected || 'regular') : info.mode;
-  sel.classList.toggle('iron', chat.mode !== 'regular');
-  sel.title = info.mode === 'auto'
-    ? (info.me ? `Auto: uses ${info.me}'s account type from the hiscores (${MODE_SHORT[info.detected] || 'Main'})`
-               : 'Auto: set your account in the Character tab ("This is me") to detect Ironman')
-    : `Answering as: ${MODE_SHORT[info.mode]}`;
+  modeInfo = await api.ask_mode_info();
+  chat.mode = modeInfo.mode === 'auto' ? (modeInfo.detected || 'regular') : modeInfo.mode;
+  $('askModeLabel').textContent = modeInfo.mode === 'auto' && modeInfo.me
+    ? `Auto · ${MODE_INFO[chat.mode].short}` : modeInfo.mode === 'auto' ? 'Auto' : MODE_INFO[chat.mode].short;
+  modeBtn.classList.toggle('iron', chat.mode !== 'regular');
+  renderModeMenu();
   const note = $('askModeNote');
   if (note) note.innerHTML = modeNote();
 }
-$('askMode').onchange = async (e) => {
-  await api.set_ask_mode(e.target.value);
+
+function openModeMenu() {
+  renderModeMenu();
+  modeMenu.hidden = false;
+  modeBtn.setAttribute('aria-expanded', 'true');
+  const sel = modeMenu.querySelector('[aria-selected="true"]');
+  if (sel) sel.classList.add('focus');
+}
+function closeModeMenu() {
+  modeMenu.hidden = true;
+  modeBtn.setAttribute('aria-expanded', 'false');
+}
+async function chooseMode(v) {
+  closeModeMenu();
+  await api.set_ask_mode(v);
   await refreshMode();
   toast(chat.mode === 'regular' ? 'The Wise Old Man will give normal (main account) advice.'
-    : `The Wise Old Man will answer as if you're ${chat.mode === 'ultimate' ? 'an Ultimate' : chat.mode === 'hardcore' ? 'a Hardcore' : 'an'} Ironman.`);
+    : `The Wise Old Man will answer for a${/^[aeiou]/i.test(MODE_INFO[chat.mode].name) ? 'n' : ''} ${MODE_INFO[chat.mode].name}.`);
+}
+modeBtn.onclick = (e) => { e.stopPropagation(); modeMenu.hidden ? openModeMenu() : closeModeMenu(); };
+modeMenu.onclick = (e) => {
+  const li = e.target.closest('li[data-v]');
+  if (li) chooseMode(li.dataset.v);
 };
+document.addEventListener('mousedown', (e) => {
+  if (!modeMenu.hidden && !e.target.closest('.ask-mode')) closeModeMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (modeMenu.hidden) return;
+  const items = [...modeMenu.querySelectorAll('li[data-v]')];
+  let i = items.findIndex((li) => li.classList.contains('focus'));
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeModeMenu(); modeBtn.focus(); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    i = (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items.forEach((li, j) => li.classList.toggle('focus', j === i));
+  } else if (e.key === 'Enter' && i >= 0) { e.preventDefault(); chooseMode(items[i].dataset.v); }
+}, true);
 
 async function openAsk() {
   closePops();

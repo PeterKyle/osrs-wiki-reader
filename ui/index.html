@@ -141,16 +141,13 @@
   <section class="ask-pop" id="askPop" hidden>
     <header class="ask-head">
       <span class="wom wom-md"><img src="https://oldschool.runescape.wiki/images/Wise_Old_Man_chathead.png" alt="" onerror="this.parentNode.classList.add('fallback')"><svg class="ic"><use href="#i-spark"/></svg></span>
-      <div class="ask-title">Wise Old Man<span id="askModel">AI assistant · answers from the OSRS Wiki</span></div>
-      <label class="ask-mode" title="Which kind of account the Wise Old Man gives advice for">
-        <select id="askMode">
-          <option value="auto">Auto</option>
-          <option value="regular">Main</option>
-          <option value="ironman">Ironman</option>
-          <option value="hardcore">Hardcore</option>
-          <option value="ultimate">Ultimate</option>
-        </select>
-      </label>
+      <div class="ask-title">Wise Old Man<span id="askModel">AI assistant</span></div>
+      <div class="ask-mode">
+        <button class="mode-btn" id="askModeBtn" aria-haspopup="listbox" title="Which kind of account the Wise Old Man gives advice for">
+          <span id="askModeLabel">Auto</span><svg class="ic"><use href="#i-down"/></svg>
+        </button>
+        <ul class="mode-menu" id="askModeMenu" role="listbox" hidden></ul>
+      </div>
       <button class="fbtn" id="askClear" title="New chat"><svg class="ic"><use href="#i-refresh"/></svg></button>
       <button class="fbtn" id="askKeyBtn" title="Change or remove your Gemini key"><svg class="ic"><use href="#i-gear"/></svg></button>
       <button class="fbtn" id="askClose" title="Close (Esc)"><svg class="ic"><use href="#i-close"/></svg></button>

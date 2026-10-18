@@ -74,8 +74,17 @@ ACCOUNT_RULES = {
         "and setups that work from the inventory, looting bag and other storage they can use, and avoid plans that "
         "need banking."),
 }
+ACCOUNT_RULES["group"] = (
+    "The player is a GROUP IRONMAN. They cannot use the Grand Exchange or trade with anyone outside their group, "
+    "but they CAN trade with group members and share items through group storage. Never suggest buying from the "
+    "Grand Exchange or from players outside the group. Suggest getting items themselves (drops, skilling, NPC "
+    "shops, minigames, quests) or from their group, and where useful suggest splitting the work across the group "
+    "(e.g. one member gathers, another processes).")
+ACCOUNT_RULES["hcgim"] = ACCOUNT_RULES["group"] + (
+    " They are a HARDCORE group: the group shares a limited number of lives, so point out risky content and "
+    "prefer safer methods.")
 ACCOUNT_LABELS = {"regular": "main account", "ironman": "Ironman", "hardcore": "Hardcore Ironman",
-                  "ultimate": "Ultimate Ironman"}
+                  "ultimate": "Ultimate Ironman", "group": "Group Ironman", "hcgim": "Hardcore Group Ironman"}
 
 STOPWORDS = set(
     "a an the is are was were be been do does did i im i'm me my mine you your we our to of in on at for from with by "
@@ -140,7 +149,7 @@ DEFAULTS = {
     "ask_limit": 300,     # max questions per day sent to Gemini (0 = no limit); a safety net on top of Google's free tier
     "gemini_skip": {},    # model -> epoch time its free quota frees up again
     "ask_used": [None, 0],  # [date, questions asked that day]
-    "ask_mode": "auto",     # answer as: auto (from "my account") | regular | ironman | hardcore | ultimate
+    "ask_mode": "auto",     # answer as: auto (from "my account") | regular | ironman | hardcore | ultimate | group | hcgim
 }
 
 user32 = ctypes.windll.user32
@@ -1201,7 +1210,7 @@ class Api:
                 "detectedLabel": ACCOUNT_LABELS.get(detected or "", ""), "me": self._cfg.get("me")}
 
     def set_ask_mode(self, mode):
-        if mode in ("auto", "regular", "ironman", "hardcore", "ultimate"):
+        if mode in ("auto", "regular", "ironman", "hardcore", "ultimate", "group", "hcgim"):
             self._cfg["ask_mode"] = mode
             save_config(self._cfg)
         return self.ask_mode_info()
