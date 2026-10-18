@@ -72,6 +72,10 @@ SCENARIOS = [
          expect={"backspace": "ok", "slash": "ok", "focusInChat": True, "navUnchanged": True}),
     dict(name="char", mode="char", size=(1100, 900), expect={"view": "char"}),
     dict(name="compare", mode="compare", size=(1100, 900), expect={"view": "char"}),
+    # Woodcutting: the trees table drops below the floated music players and uses the full column, pictures intact
+    dict(name="wood", mode="wood", size=(1100, 900),
+         expect={"rowH": lambda v: v is not None and v < 600, "wrapW": lambda v, r: v >= r["article"] - 80,
+                 "imgs": lambda v: len(v) == 3 and all(i[2] > 0 for i in v)}),
     dict(name="quest", mode="quest", size=(1100, 900), expect={"page": "Dragon Slayer II", "banner": True}),
     dict(name="diary", mode="diary", size=(1100, 900), expect={"page": "Ardougne Diary", "diaryNotes": at_least(1)}),
     dict(name="methods", mode="methods", size=(1100, 900), expect={"page": "Agility", "methods": at_least(1)}),

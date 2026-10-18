@@ -88,6 +88,9 @@
 /* tables: rounded card, hairline rows, tonal header, no grid */
 .wiki .table-wrap { overflow-x: auto; margin: .9em 0 1.4em; max-width: 100%; border-radius: var(--r-lg); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); background: var(--surface); }
 .wiki .table-wrap > table { margin: 0; width: 100%; }
+.wiki .table-wrap.clear { clear: both; }
+/* pictures keep their size in tables: shrinking them to the cell let a squeezed table collapse picture columns to nothing */
+.wiki .table-wrap td img { max-width: none; }
 .wiki table { border-collapse: collapse; }
 .wiki table.wikitable, .wiki table.lighttable { background: var(--surface); font-size: .91em; }
 .wiki .wikitable > tbody > tr > th, .wiki .wikitable > tbody > tr > td,

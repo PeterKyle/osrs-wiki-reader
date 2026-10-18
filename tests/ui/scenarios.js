@@ -246,6 +246,17 @@ const S = {
     const m = document.querySelector('.xc-m'); if (m) m.click(); await wait(200);
     return { methods: document.querySelectorAll('.xc-m').length };
   },
+  async wood() {   // Woodcutting trees table: two floated music players above it used to squeeze it into tall rows with empty picture columns
+    await openPage('Woodcutting'); await wait(1500);
+    const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Bloodwood tree');
+    const tr = a && a.closest('tr'); const wrap = tr && tr.closest('.table-wrap');
+    if (tr) await scrollTo(tr, 40);
+    const cells = tr ? [...tr.children].map((c) => Math.round(c.getBoundingClientRect().width)) : [];
+    const imgs = tr ? [...tr.querySelectorAll('img')].map((i) => [i.getAttribute('width'), i.getAttribute('height'), Math.round(i.getBoundingClientRect().width), Math.round(i.getBoundingClientRect().height), getComputedStyle(i).display]) : [];
+    return { rowH: tr ? Math.round(tr.getBoundingClientRect().height) : null, cells, imgs,
+      wrapW: wrap ? Math.round(wrap.clientWidth) : null, tableW: wrap ? Math.round(wrap.scrollWidth) : null,
+      article: Math.round(els.article.clientWidth) };
+  },
   async alert() { await openPage('Abyssal whip'); await wait(400); $id('geAlertBtn').click(); await wait(200); },
 
   // ---- settings / chrome ----

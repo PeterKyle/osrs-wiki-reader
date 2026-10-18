@@ -638,11 +638,10 @@ async function renderPetChances(p) {
   box.innerHTML = `<h2 class="home-h">Pet chances <span class="since">how many players would have each pet by your kill count</span></h2>
     <div class="c-card goals pets">` +
     (ownedPets.length ? `<div class="pets-owned">You have: ${ownedPets.map((n) => `<a href="${wikiHref(n)}" class="pet-own">${svgIcon('i-check')}${escapeHtml(n)}</a>${ownedLuck(n)}`).join('')}</div>` : '') +
-    rows.slice(0, 10).map(({ a, pet, pct }) => `<div class="goal">
+    rows.map(({ a, pet, pct }) => `<div class="goal">
       <span class="gn wide"><b>${escapeHtml(pet.pet)}</b> <a class="dim" href="${wikiHref(KC_PAGES[a.name] || a.name)}">${escapeHtml(a.name)}</a>
         <span class="dim">· ${fmt(a.score)} at 1/${fmt(pet.rate)}</span></span>
       <span class="gtrack"><span style="width:${Math.max(2, pct)}%"></span></span><span class="gv">${shown(pct)}</span><span></span></div>`).join('') +
-    (rows.length > 10 ? `<p class="dim goal-note">${rows.length - 10} more bosses with a smaller chance.</p>` : '') +
     (p.clog ? `<p class="dim goal-note">Pets you have come from your collection log (WikiSync); the rest are odds.</p></div>`
       : `<p class="dim goal-note">These are only the odds. Sync your collection log with WikiSync to tick the pets you have.</p></div>`);
 }

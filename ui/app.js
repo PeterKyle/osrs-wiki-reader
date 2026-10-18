@@ -266,6 +266,12 @@ function wrapTables(root) {
 
 // Mark which sides of a too-wide table have more columns to scroll to (the CSS fades those edges).
 function tableEdges(w) {
+  // A float on the right (infobox, music player) narrows a table's scroll box for its whole length, which squeezes
+  // wide tables into tall, thin rows. When it doesn't fit beside the float, drop it below the float instead.
+  const room = w.parentElement.clientWidth;
+  if (!w.classList.contains('clear') && w.clientWidth < room - 40 && (w.scrollWidth > w.clientWidth + 1 || w.clientWidth < room * 0.6)) {
+    w.classList.add('clear');
+  }
   const more = w.scrollWidth - w.clientWidth;
   w.classList.toggle('more-l', more > 1 && w.scrollLeft > 1);
   w.classList.toggle('more-r', more > 1 && w.scrollLeft < more - 1);
