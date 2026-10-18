@@ -1,5 +1,5 @@
 'use strict';
-/* Live Grand Exchange prices (prices.runescape.wiki), the watchlist and bookmarks. */
+/* Live Grand Exchange prices (prices.runescape.wiki), price alerts and bookmarks. */
 
 const RANGES = {            // label -> [timestep, days shown]
   '1W': ['1h', 7],
@@ -56,7 +56,6 @@ window.showPrice = async function (pageTitle) {
     return;
   }
 
-  const watching = (state.watchlist || []).includes(info.id);
   const margin = info.high && info.low ? info.high - info.low - geTax(info.high) : null;
   const lastTrade = Math.max(info.highTime || 0, info.lowTime || 0);
   const alchDiff = info.highalch && info.high ? info.highalch - info.high : null;
@@ -67,7 +66,6 @@ window.showPrice = async function (pageTitle) {
       <span class="ge-title">Grand Exchange</span>
       <span class="ge-upd">${lastTrade ? 'last trade ' + timeAgo(lastTrade) : ''}</span>
       <button class="cbtn" id="geAlertBtn" title="Get a Windows notification when the price crosses a target">${svgIcon('i-bell')}<span>Alert</span></button>
-      <button class="cbtn${watching ? ' on' : ''}" id="geWatch" title="Show this item's price on the home screen">${svgIcon('i-star')}<span>${watching ? 'Watching' : 'Watch'}</span></button>
     </div>
     <div class="ge-alert" id="geAlert" hidden>
       <form class="ge-alert-form" id="geAlertForm">
@@ -97,18 +95,6 @@ window.showPrice = async function (pageTitle) {
     </div>
     <div class="ge-chart" id="geChart"><div class="ge-empty">Loading chart…</div></div>`;
 
-  const watchBtn = $('geWatch');
-  const setWatching = (on) => {
-    watchBtn.classList.toggle('on', on);
-    watchBtn.querySelector('span').textContent = on ? 'Watching' : 'Watch';
-  };
-  watchBtn.onclick = async () => {
-    const on = await api.toggle_watch(info.id);
-    state = await api.get_state();
-    setWatching(on);
-    renderItemAlerts();
-  };
-
   const renderItemAlerts = () => {
     const mine = (state.alerts || []).filter((a) => a.id === info.id);
     $('geAlertBtn').classList.toggle('on', mine.length > 0);
@@ -127,7 +113,6 @@ window.showPrice = async function (pageTitle) {
     const price = parseGp($('geAlertPrice').value);
     if (!price) { toast('Enter a price, like 850,000 or 850k.'); return; }
     state = await api.set_alert(info.id, $('geAlertDir').value, price);
-    setWatching(true);
     renderItemAlerts();
     toast(`You'll get a notification when ${info.name} goes ${$('geAlertDir').value} ${fmt(price)} gp.`);
   };
@@ -250,51 +235,18 @@ function drawChart(box, data, range) {
   });
 }
 
-/* ---------------- home: watchlist + bookmarks ---------------- */
+/* ---------------- home: bookmarks ---------------- */
 
-let watchToken = 0;
-window.renderHomeExtras = async function () {
+window.renderHomeExtras = function () {
   const marks = state.bookmarks || [];
   $('bookmarksWrap').hidden = !marks.length;
   $('bookmarks').innerHTML = marks.map((t) =>
     `<button class="chip bm" data-title="${escapeHtml(t)}">${svgIcon('i-bookmark')}${escapeHtml(t)}</button>`).join('');
-
-  const wrap = $('watchWrap'), box = $('watch');
-  if (!(state.watchlist || []).length) { wrap.hidden = true; return; }
-  wrap.hidden = false;
-  if (!box.children.length) box.innerHTML = '<div class="row"><span class="dim">Loading prices…</span></div>';
-  const token = ++watchToken;
-  const items = await api.watchlist();
-  if (token !== watchToken) return;
-  if (items.error) { box.innerHTML = `<div class="row"><span class="dim">${escapeHtml(items.error)}</span></div>`; return; }
-  box.innerHTML = items.map((it) => {
-    const al = (state.alerts || []).filter((a) => a.id === it.id)
-      .map((a) => `${a.dir === 'above' ? '≥' : '≤'} ${fmtShort(a.price)}`).join(', ');
-    return `
-    <div class="row witem" data-title="${escapeHtml(it.name)}">
-      <span class="wname">${it.icon ? `<img src="${itemIcon(it.icon)}" alt="">` : ''}<span>${escapeHtml(it.name)}</span>${al ? `<small class="walert" title="Price alert">${svgIcon('i-bell')}${al}</small>` : ''}</span>
-      ${changeHtml(it.high, it.avgHigh24)}
-      <b>${gp(it.high)}</b>
-      <button class="wx" data-id="${it.id}" title="Remove from watchlist">${svgIcon('i-x')}</button>
-    </div>`;
-  }).join('');
 };
 
 $('bookmarks').onclick = (e) => {
   const b = e.target.closest('.chip');
   if (b) openPage(b.dataset.title);
-};
-$('watch').onclick = async (e) => {
-  const x = e.target.closest('.wx');
-  if (x) {
-    e.stopPropagation();
-    await api.toggle_watch(+x.dataset.id);
-    state = await api.get_state();
-    renderHomeExtras();
-    return;
-  }
-  const row = e.target.closest('.witem');
-  if (row) openPage(row.dataset.title);
 };
 
 /* ---------------- bookmark button ---------------- */

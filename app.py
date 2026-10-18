@@ -140,7 +140,6 @@ DEFAULTS = {
     "recent": [],
     "accounts": [],  # saved RSNs
     "me": None,      # the RSN used for quest requirement checks
-    "watchlist": [],  # GE item ids
     "bookmarks": [],  # page titles
     "alerts": [],     # [{"id", "name", "dir": "above"|"below", "price"}]
     "gemini_key": None,  # Gemini API key, encrypted with Windows DPAPI (base64)
@@ -511,28 +510,6 @@ class Api:
             return []
         return [[d["timestamp"], d.get("avgHighPrice"), d.get("avgLowPrice")] for d in data]
 
-    def watchlist(self):
-        ids = self._cfg["watchlist"]
-        if not ids:
-            return []
-        try:
-            by_id = self._items()["_by_id"]
-            latest = self._get_timed(f"{PRICES}/latest", 60)["data"]
-            day = self._get_timed(f"{PRICES}/24h", 300)["data"]
-        except Exception as e:
-            return {"error": f"Couldn't load GE prices ({e.__class__.__name__})."}
-        return [self._item_summary(by_id[i], latest, day) for i in ids if i in by_id]
-
-    def toggle_watch(self, item_id):
-        item_id = int(item_id)
-        w = self._cfg["watchlist"]
-        self._cfg["watchlist"] = [i for i in w if i != item_id] if item_id in w else w + [item_id]
-        if item_id not in self._cfg["watchlist"]:
-            self._cfg["alerts"] = [a for a in self._cfg["alerts"] if a["id"] != item_id]
-            self._sync_tray()
-        save_config(self._cfg)
-        return item_id in self._cfg["watchlist"]
-
     # ---- training methods for the XP calculator (wiki Bucket data) ----
     def _bucket(self, query):
         status, data = http_json(API + "?" + urllib.parse.urlencode({"action": "bucket", "format": "json", "query": query}))
@@ -623,8 +600,6 @@ class Api:
         alerts = [a for a in self._cfg["alerts"] if not (a["id"] == item_id and a["dir"] == direction)]
         alerts.append({"id": item_id, "name": item["name"], "dir": direction, "price": price})
         self._cfg["alerts"] = alerts
-        if item_id not in self._cfg["watchlist"]:
-            self._cfg["watchlist"].append(item_id)
         save_config(self._cfg)
         self._sync_tray()
         return self.get_state()
@@ -1199,7 +1174,6 @@ class Api:
             "recent": self._cfg["recent"],
             "accounts": self._cfg["accounts"],
             "me": self._cfg["me"],
-            "watchlist": self._cfg["watchlist"],
             "bookmarks": self._cfg["bookmarks"],
             "alerts": self._cfg["alerts"],
             "now": time.time(),
