@@ -103,6 +103,27 @@ const API = {
     return Object.fromEntries(names.map((n) => [n, count(n)]));
   },
   bank_value: async () => (window.__BANK ? clone(window.__PROFILE.bankValue) : { imported: false }),
+  // best setup from your bank (made-up gear; the real maths is checked in tests/test_dps.py)
+  best_setup: async (t, o) => {
+    if (!window.__BANK || t !== 'Vorkath') return null;
+    window.__BEST_CALLS = (window.__BEST_CALLS || 0) + 1;
+    const opts = { task: !!o.task, potions: o.potions !== false, prayers: o.prayers !== false, rigour: !!o.rigour };
+    const slots = (w, extra) => Object.assign({ weapon: w, ammo: null, head: 'Helm of neitiznot', cape: 'Fire cape', neck: 'Amulet of fury',
+      body: 'Bandos chestplate', shield: null, legs: 'Bandos tassets', hands: 'Barrows gloves', feet: 'Dragon boots', ring: 'Berserker ring (i)' }, extra || {});
+    const m = opts.task ? 7 / 6 : 1;
+    return { monster: { name: 'Vorkath', version: 'Post-quest', hp: 750, size: 7, slayer: true, attrs: ['dragon', 'fiery', 'undead'], weak: 'fire', weakpct: 40,
+        image: 'Vorkath.png', combat: 732, attacks: ['Slash', 'Magic', 'Ranged', 'Dragonfire'], maxhit: 121 },
+      versions: ['Post-quest', 'Dragon Slayer II'], version: o.version || 0, opts, synced: true, updated: Date.now() / 1000,
+      styles: [
+        { style: 'melee', dps: 4.12 * m, max: 41, hits: 1, acc: 0.58, speed: 2.4, ttk: 182, how: 'Stab, aggressive', prayer: 'Piety', potion: 'Super combat',
+          notes: ['Salve amulet: +20% against undead'], twoHanded: false, slots: slots('Abyssal tentacle', { neck: 'Salve amulet(ei)', shield: 'Dragon defender' }) },
+        { style: 'ranged', dps: 6.31 * m, max: 48, hits: 1, acc: 0.71, speed: 3, ttk: 119, how: 'Rapid', prayer: 'Eagle Eye', potion: 'Ranging potion',
+          notes: ['Dragon hunter crossbow: +30% accuracy, +25% damage against dragons'], twoHanded: false,
+          slots: slots('Dragon hunter crossbow', { ammo: 'Ruby dragon bolts (e)', head: "Karil's coif", body: "Karil's leathertop", legs: "Karil's leatherskirt", shield: "Odium ward" }) },
+        { style: 'magic', dps: 2.05 * m, max: 33, hits: 1, acc: 0.31, speed: 3, ttk: 366, how: 'Fire Surge', prayer: 'Mystic Might', potion: 'Magic potion',
+          notes: ["Weak to fire: +40% of the spell's base damage"], twoHanded: true, slots: slots("Ahrim's staff", { head: "Ahrim's hood", body: "Ahrim's robetop", legs: "Ahrim's robeskirt" }) },
+      ] };
+  },
   gear_upgrades: async (t) => (window.__BANK ? clone(((window.__PROFILE.upgrades || {})[t]) || null) : null),
   clipboard_text: async () => window.__CLIP || '',
   bank_items: async () => (window.__BANK ? Object.entries(window.__BANK).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty) : null),

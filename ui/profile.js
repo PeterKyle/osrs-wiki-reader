@@ -424,9 +424,111 @@ window.showGear = async function (title) {
     img.onerror = () => { if (img.dataset.stack) { img.src = img.dataset.stack; img.dataset.stack = ''; } else img.remove(); };
   });
   fixIcons();
+  const ours = article.querySelector('.bestset');
+  if (ours) { box.open = false; ours.after(box); return; }
   const after = article.querySelector('.cando') || article.querySelector('.mykc') || article.querySelector('h1');
   if (after) after.after(box); else article.prepend(box);
 };
+
+/* ---------------- monster pages: the best setup you own (from your bank; maths in dps.py) ---------------- */
+
+const BS_KEY = 'bestsetOpts';
+const bsOpts = () => { try { return JSON.parse(localStorage.getItem(BS_KEY)) || {}; } catch (e) { return {}; } };
+const bsSave = (o) => { try { localStorage.setItem(BS_KEY, JSON.stringify(o)); } catch (e) { /* private window */ } };
+const BS_STYLES = { melee: 'Melee', ranged: 'Ranged', magic: 'Magic' };
+const BS_ORDER = ['head', 'cape', 'neck', 'ammo', 'weapon', 'shield', 'body', 'legs', 'hands', 'feet', 'ring'];   // in pairs: weapon beside shield...
+const BS_ATTRS = { dragon: 'Dragon', demon: 'Demon', undead: 'Undead', kalphite: 'Kalphite', vampyre1: 'Vampyre', vampyre2: 'Vampyre',
+  vampyre3: 'Vampyre', fiery: 'Fiery', spectral: 'Spectral', leafy: 'Leafy', golem: 'Golem', xerician: 'Xerician', penance: 'Penance',
+  shade: 'Shade', rat: 'Rat', icy: 'Icy' };
+const bsThumb = (file) => { const f = encodeURIComponent(file.replace(/ /g, '_')); return `${WIKI}/images/thumb/${f}/240px-${f}`; };
+const bsTime = (s) => (s == null ? '–' : s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`
+  : s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`);
+
+window.showBestSetup = async function (title, version) {
+  if (!state.me) return;
+  const article = els.article;
+  const res = await api.best_setup(title, { ...bsOpts(), version: version || 0 });
+  if (!res || article.hidden || nav.stack[nav.idx].title !== title) return;
+  let box = article.querySelector('.bestset');
+  if (!box) {
+    if (res.error) return;
+    box = document.createElement('details');
+    box.className = 'gear bestset';
+    box.open = true;
+    const wiki = article.querySelector('.gear');   // the strategy guide's list: below ours, folded
+    if (wiki) { wiki.before(box); wiki.open = false; } else {
+      const after = article.querySelector('.cando') || article.querySelector('.mykc') || article.querySelector('h1');
+      if (after) after.after(box); else article.prepend(box);
+    }
+  }
+  renderBestSetup(box, res, title);
+};
+
+function renderBestSetup(box, res, title) {
+  const o = res.opts || {};
+  const styles = res.styles || [];
+  const bestI = styles.reduce((b, s, i) => (s.dps > styles[b].dps ? i : b), 0);
+  const want = styles.findIndex((s) => s.style === box.dataset.style);
+  const cur = want >= 0 ? want : bestI;
+  const chip = (k, label) => `<label class="bs-chip"><input type="checkbox" data-k="${k}"${o[k] ? ' checked' : ''}>${label}</label>`;
+  const item = (n) => `<a href="${wikiHref(n)}" title="${escapeHtml(n)}"><img src="${itemIcon(n + '.png')}" data-stack="${escapeHtml(itemIcon(n + ' 5.png'))}" alt="" loading="lazy">${escapeHtml(n)}</a>`;
+  const panel = (i) => {
+    const s = styles[i];
+    const twoH = s.slots.weapon && !s.slots.shield && s.twoHanded;
+    return `<div class="bs-stats">
+        <div><b>${s.max}${s.hits > 1 ? ` <small>×${s.hits}</small>` : ''}</b><span>Max hit</span></div>
+        <div><b>${Math.round(s.acc * 100)}%</b><span>Accuracy</span></div>
+        <div><b>${s.dps.toFixed(2)}</b><span>Damage a second</span></div>
+        <div><b>${bsTime(s.ttk)}</b><span>Time to kill</span></div></div>
+      <div class="bs-how">${escapeHtml(s.how)}<span class="dim"> · ${s.prayer ? escapeHtml(s.prayer) : 'no prayer'} · ${s.potion ? escapeHtml(s.potion) : 'no potion'}</span></div>
+      <div class="gear-grid bs-grid">` + BS_ORDER.map((slot) => `<span class="gear-slot">${SLOT_NAMES[slot] || slot}</span><span>${
+        s.slots[slot] ? item(s.slots[slot]) : `<span class="dim">${slot === 'shield' && twoH ? 'two-handed weapon' : 'anything'}</span>`}</span>`).join('') + `</div>` +
+      (s.notes && s.notes.length ? `<ul class="bs-notes">${s.notes.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '');
+  };
+  const mon = res.monster;
+  const verSel = res.versions.length > 1 ? `<select class="bs-ver" title="Which version of the monster">${res.versions.map((v, i) => `<option value="${i}"${i === res.version ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('')}</select>` : '';
+  const tags = (mon.attrs || []).filter((a) => BS_ATTRS[a]).map((a) => `<span class="bs-tag">${BS_ATTRS[a]}</span>`).join('') +
+    (mon.weak ? `<span class="bs-tag weak el-${escapeHtml(mon.weak)}">Weak to ${escapeHtml(mon.weak)}${mon.weakpct ? ` +${mon.weakpct}%` : ''}</span>` : '');
+  const hero = `<div class="bs-hero">
+      ${mon.image ? `<div class="bs-art"><img src="${bsThumb(mon.image)}" data-full="${escapeHtml(itemIcon(mon.image))}" alt=""></div>` : ''}
+      <div class="bs-info">
+        <div class="bs-name"><span>${escapeHtml(mon.name)}</span>${verSel}</div>
+        <div class="bs-meta">${mon.combat ? `<span><b>${fmt(mon.combat)}</b> combat</span>` : ''}<span><b>${fmt(mon.hp)}</b> hitpoints</span>${mon.size > 1 ? `<span><b>${mon.size}×${mon.size}</b> size</span>` : ''}${mon.maxhit ? `<span>hits up to <b>${fmt(mon.maxhit)}</b></span>` : ''}</div>
+        ${mon.attacks && mon.attacks.length ? `<div class="bs-attacks">Attacks with ${mon.attacks.map(escapeHtml).join(', ')}</div>` : ''}
+        ${tags ? `<div class="bs-tags">${tags}</div>` : ''}
+      </div></div>`;
+  box.innerHTML = `<summary>Your best setup <span class="dim">from your bank, with your levels</span></summary>
+    ${hero}
+    <div class="bs-opts">
+      ${mon.slayer ? chip('task', 'On a slayer task') : ''}${chip('potions', 'Potions')}${chip('prayers', 'Prayers')}${chip('rigour', 'Rigour &amp; Augury unlocked')}
+    </div>` +
+    (res.error ? `<p class="dim">${escapeHtml(res.error)}</p>` : !styles.length
+      ? '<p class="dim">Nothing in your imported bank can fight this.</p>'
+      : `<div class="seg gear-tabs bs-tabs">${styles.map((s, i) => `<button data-i="${i}" class="${i === cur ? 'on' : ''}">${BS_STYLES[s.style]} <small>${s.dps.toFixed(2)}</small>${i === bestI && styles.length > 1 ? ' <span class="bs-best">best</span>' : ''}</button>`).join('')}</div>
+        <div class="bs-panel">${panel(cur)}</div>`) +
+    `<p class="dim bs-foot">Damage a second is an estimate from your hiscores levels and imported bank. Gear you're wearing isn't in a bank export, so bank it first. Special attacks, bolt effects and wield requirements aren't counted.</p>`;
+  const fixIcons = () => box.querySelectorAll('.bs-grid img').forEach((img) => {
+    img.onerror = () => { if (img.dataset.stack) { img.src = img.dataset.stack; img.dataset.stack = ''; } else img.remove(); };
+  });
+  fixIcons();
+  const art = box.querySelector('.bs-art img');   // a small thumbnail, or the full picture if the wiki has none that size
+  if (art) art.onerror = () => { if (art.dataset.full) { art.src = art.dataset.full; art.dataset.full = ''; } else art.parentElement.remove(); };
+  const tabs = box.querySelector('.bs-tabs');
+  if (tabs) tabs.onclick = (e) => {
+    const b = e.target.closest('button[data-i]');
+    if (!b) return;
+    tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    box.dataset.style = styles[+b.dataset.i].style;
+    box.querySelector('.bs-panel').innerHTML = panel(+b.dataset.i);
+    fixIcons();
+  };
+  const reload = () => { box.classList.add('loading'); showBestSetup(title, +((box.querySelector('.bs-ver') || {}).value || 0)).then(() => box.classList.remove('loading')); };
+  box.querySelectorAll('.bs-chip input').forEach((c) => {
+    c.onchange = () => { bsSave({ ...bsOpts(), [c.dataset.k]: c.checked }); reload(); };
+  });
+  const ver = box.querySelector('.bs-ver');
+  if (ver) ver.onchange = reload;
+}
 
 /* ---------------- article pages: can you kill / cast this? ---------------- */
 

@@ -246,6 +246,8 @@ function renderArticle(res) {
   if (window.showMyKc) showMyKc(res.title);
   if (window.showCanDo) showCanDo(res.title);
   if (window.showGear) showGear(res.title);
+  // only pages with a monster infobox: no extra wiki request for every other page
+  if (window.showBestSetup && state.me && els.article.querySelector('.infobox-monster')) showBestSetup(res.title);
   if (window.showInBank) showInBank(res.title);
   if (window.markOwnedLinks) markOwnedLinks(res.title);
   if (window.showSetProgress) showSetProgress(res.title);
