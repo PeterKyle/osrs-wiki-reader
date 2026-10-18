@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.5"
+VERSION = "1.3.6"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -272,24 +272,6 @@ class SnapPreview:
         self.pump()
 
 
-# Own user32 handle so these argtypes (64-bit pointers) don't change ctypes.windll.user32 for anyone else.
-_u32 = ctypes.WinDLL("user32")
-_LRESULT = ctypes.c_ssize_t
-_WNDPROC = ctypes.WINFUNCTYPE(_LRESULT, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM)
-_u32.CallWindowProcW.argtypes = [ctypes.c_void_p, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
-_u32.CallWindowProcW.restype = _LRESULT
-_u32.SetWindowLongPtrW.argtypes = [wt.HWND, ctypes.c_int, ctypes.c_void_p]
-_u32.SetWindowLongPtrW.restype = ctypes.c_void_p
-_u32.GetWindowLongPtrW.argtypes = [wt.HWND, ctypes.c_int]
-_u32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
-_u32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
-_u32.MonitorFromWindow.restype = wt.HANDLE
-
-
-class _StyleStruct(ctypes.Structure):
-    _fields_ = [("styleOld", wt.DWORD), ("styleNew", wt.DWORD)]
-
-
 class _WindowPlacement(ctypes.Structure):
     _fields_ = [("length", wt.UINT), ("flags", wt.UINT), ("showCmd", wt.UINT), ("ptMinPosition", wt.POINT),
                 ("ptMaxPosition", wt.POINT), ("rcNormalPosition", wt.RECT)]
@@ -298,45 +280,16 @@ class _WindowPlacement(ctypes.Structure):
 class NativeFrame:
     """Gives the frameless window a normal window's style (sizable, minimize/maximize) while keeping the frame
     itself invisible. Windows then treats it like any other app: it's offered in Snap Assist, Win+Arrow keys
-    snap it, and it gets the native shadow and minimize/restore animations."""
-    STYLE = 0x00C00000 | 0x00040000 | 0x00080000 | 0x00020000 | 0x00010000  # CAPTION THICKFRAME SYSMENU MIN MAX
+    snap it, and it gets the native shadow and minimize/restore animations.
+    The window procedure is framehook/FrameHook.cs (C#), never Python: see the note at the top of that file."""
 
-    def __init__(self, hwnd, on_zoom_change=None):
+    def __init__(self, hwnd):
+        import clr   # pythonnet, already loaded by pywebview
+        clr.AddReference(resource_path("framehook", "FrameHook.dll"))
+        from System import IntPtr
+        from OsrsWikiReader import FrameHook
         self.hwnd = hwnd
-        self._on_zoom_change = on_zoom_change
-        self._zoomed = False
-        self._proc = _WNDPROC(self._wndproc)   # keep a reference: Windows calls it for the window's lifetime
-        self._old = _u32.SetWindowLongPtrW(hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p))   # GWLP_WNDPROC
-        if not self._old:
-            raise OSError("could not subclass the window")
-        _u32.SetWindowLongPtrW(hwnd, -16, _u32.GetWindowLongPtrW(hwnd, -16) | self.STYLE)          # GWL_STYLE
-        # FRAMECHANGED (re-run WM_NCCALCSIZE) | NOMOVE | NOSIZE | NOZORDER | NOACTIVATE
-        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004 | 0x0010)
-
-    def _wndproc(self, hwnd, msg, wp, lp):
-        try:
-            if msg == 0x0083 and wp:   # WM_NCCALCSIZE: the whole window is client area (no visible frame)
-                if user32.IsZoomed(hwnd):
-                    # Windows maximizes framed windows a few pixels past the screen edges (the hidden border);
-                    # keep the content to the visible work area so nothing gets cut off.
-                    mi = _MonitorInfo()
-                    mi.cbSize = ctypes.sizeof(_MonitorInfo)
-                    if user32.GetMonitorInfoW(_u32.MonitorFromWindow(hwnd, 2), ctypes.byref(mi)):
-                        ctypes.cast(lp, ctypes.POINTER(wt.RECT))[0] = mi.rcWork   # NCCALCSIZE_PARAMS.rgrc[0]
-                return 0
-            if msg == 0x0086:          # WM_NCACTIVATE: lParam -1 = don't paint a frame on focus changes
-                return _u32.CallWindowProcW(self._old, hwnd, msg, wp, -1)
-            if msg == 0x007C and wp & 0xFFFFFFFF == 0xFFFFFFF0:   # WM_STYLECHANGING (GWL_STYLE): keep the bits
-                ctypes.cast(lp, ctypes.POINTER(_StyleStruct)).contents.styleNew |= self.STYLE
-            if msg == 0x0005 and wp in (0, 2):   # WM_SIZE restored / maximized
-                zoomed = wp == 2
-                if zoomed != self._zoomed:
-                    self._zoomed = zoomed
-                    if self._on_zoom_change:   # not on this (UI) thread: it may wait on the UI thread
-                        threading.Thread(target=self._on_zoom_change, daemon=True).start()
-        except Exception:
-            pass
-        return _u32.CallWindowProcW(self._old, hwnd, msg, wp, lp)
+        self._hook = FrameHook(IntPtr(hwnd))   # keep a reference for the window's lifetime
 
     def zoomed(self):
         return bool(user32.IsZoomed(self.hwnd))
@@ -1725,7 +1678,7 @@ class Api:
         except Exception:
             pass
         try:  # a normal window as far as Windows is concerned: Snap Assist, Win+Arrow keys, shadow
-            self._frame = NativeFrame(self._hwnd, on_zoom_change=self._notify_max_state)
+            self._frame = NativeFrame(self._hwnd)
         except Exception:
             self._frame = None
         rect = self._cfg.get("rect")

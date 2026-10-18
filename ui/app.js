@@ -77,6 +77,12 @@ const toggleMax = async () => onMaxState(await api.toggle_maximize());
 $('btnMax').onclick = toggleMax;
 $('titlebar').addEventListener('dblclick', (e) => { if (!e.target.closest('button')) toggleMax(); });
 window.addEventListener('pywebviewready', () => setTimeout(async () => onMaxState(await api.is_maximized()), 300));
+// Windows can maximize/restore it too (Win+Up/Down, Snap Assist): re-check after the window settles
+let maxCheck = null;
+window.addEventListener('resize', () => {
+  clearTimeout(maxCheck);
+  maxCheck = setTimeout(async () => { if (api) onMaxState(await api.is_maximized()); }, 150);
+});
 els.pin.onclick = async () => els.pin.classList.toggle('on', await api.toggle_pin());
 
 /* ---------------- navigation ---------------- */

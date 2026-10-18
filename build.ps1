@@ -8,12 +8,18 @@ if (-not (Test-Path .venv)) {
     .\.venv\Scripts\python.exe -m pip install pywebview pyinstaller
 }
 
+# The window-frame hook is C# (see framehook\FrameHook.cs); csc.exe ships with Windows' .NET Framework 4.
+& "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -nologo -target:library -optimize `
+    "-out:framehook\FrameHook.dll" "framehook\FrameHook.cs"
+if ($LASTEXITCODE) { throw "csc failed" }
+
 .\.venv\Scripts\pyinstaller.exe app.py `
     --name "OSRS Wiki Reader" `
     --onefile --windowed --noconfirm --clean `
     --icon ui\icon.ico `
     --version-file version_info.txt `
     --add-data "ui;ui" `
+    --add-data "framehook\FrameHook.dll;framehook" `
     --exclude-module tkinter --exclude-module unittest --exclude-module pydoc `
     --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module gi
 
