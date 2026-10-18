@@ -43,7 +43,7 @@ window.addEventListener('pywebviewready', async () => {
   renderHome();
   goHome(true);
   focusSearch();
-  if (state.guideSeen === false) setTimeout(() => window.openGuide && openGuide(), 400);   // first launch
+  if (state.guideSeen === false) setTimeout(() => window.startTour && startTour(), 500);   // first launch: guided tour
 });
 
 window.focusSearch = function () {
@@ -527,7 +527,7 @@ function togglePop(pop, btn) {
 els.toc.onclick = (e) => { e.stopPropagation(); togglePop(els.tocPop, els.toc); };
 $('btnSettings').onclick = (e) => { e.stopPropagation(); togglePop(els.setPop, $('btnSettings')); };
 document.addEventListener('mousedown', (e) => {
-  if (!e.target.closest('.pop, #btnToc, #btnSettings')) closePops();
+  if (!e.target.closest('.pop, #btnToc, #btnSettings, .tour-layer')) closePops();
 });
 
 // 'auto' follows the Windows light/dark setting, live

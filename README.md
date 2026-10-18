@@ -16,7 +16,7 @@ A small, fast desktop window for the [Old School RuneScape Wiki](https://oldscho
 3. **Connect the Wise Old Man** (optional, free): click his face in the toolbar and follow the steps to get a free Gemini key (see [Getting a free Gemini key](#getting-a-free-gemini-key) below).
 4. **Hotkeys**: if they clash with your game, open Settings (gear) and click a hotkey to change it.
 
-The app also has a built-in **Quick guide** with pictures: press F1, or go to Settings → Quick guide.
+The first time you open the app, a short **guided tour** walks you through all of this: it opens each screen, highlights where to click and tells you what to do. Press **F1** any time for the Quick guide (shortcuts and tips) or to take the tour again.
 
 <img src="ui/guide/askthis.webp" width="620" alt="Highlighting text on a wiki page, pressing Ask about this, and the Wise Old Man answering">
 

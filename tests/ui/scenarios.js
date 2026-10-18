@@ -93,7 +93,52 @@ const S = {
   async mini() { $id('btnMini').click(); await wait(200); await miniShow('Abyssal whip'); await wait(300); },
   async update() { await wait(5000); return { updateModal: visible($id('updModal')) }; },
   async updprog() { await wait(5000); $id('updNow').click(); await wait(1500); },
-  async guide() { await wait(1200); return { guideOpen: visible($id('guideModal')) }; },
+  // first launch: the guided tour starts by itself
+  async guide() {
+    await wait(1500);
+    const card = document.querySelector('.tour-card h3');
+    return { tourOpen: !!document.querySelector('.tour-layer'), tourTitle: card ? card.textContent : null };
+  },
+  // F1: the Quick guide reference card
+  async guidecard() { await wait(600); key(document.body, { key: 'F1' }); await wait(500); return { guideOpen: visible($id('guideModal')) }; },
+  // a new player (no account, no key): the tour waits for each action, then moves on by itself
+  async tour() {
+    await wait(600);
+    // a brand-new player, and no animations (headless Edge doesn't advance them, so they'd freeze mid-way)
+    const still = document.createElement('style');
+    still.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }';
+    document.head.appendChild(still);
+    state.me = null;   // looking players up mustn't set an account for this new player
+    for (const m of ['save_account', 'player']) {
+      const real = api[m];
+      api[m] = async (...args) => { const r = await real(...args); if (r && 'me' in r) r.me = null; return r; };
+    }
+    await startTour(); await wait(300);
+    const title = () => tour.steps[tour.i].title;
+    const ringOnTarget = () => {
+      const r = document.querySelector('.tour-ring').getBoundingClientRect();
+      const t = tourRect(tour.steps[tour.i].target);
+      return !!t && Math.abs(r.left + 6 - t.left) < 2 && Math.abs(r.top + 6 - t.top) < 2;
+    };
+    const out = { steps: tour.steps.length };
+    await tourGo(2); await wait(400);
+    out.ringOnPersonIcon = ringOnTarget();
+    $id('btnChar').click(); await wait(900);
+    out.afterPersonIcon = title();
+    await openCharacter('Woox'); await wait(900);
+    out.afterLookup = title();
+    await tourGo(5); await wait(400);
+    $id('btnAsk').click(); await wait(900);
+    out.afterWiseOldMan = title();
+    await tourGo(10); await wait(400);
+    $id('btnSettings').click(); await wait(900);
+    out.afterGear = title();
+    out.ringOnHotkeys = ringOnTarget();
+    key(document.body, { key: 'Escape' }); await wait(300);
+    out.closedByEsc = !document.querySelector('.tour-layer');
+    out.guideSeen = state.guideSeen;
+    return out;
+  },
 
   // ---- Wise Old Man chat ----
   async setup() { await openChat(); return { setupShown: !visible($id('askInputRow')) }; },

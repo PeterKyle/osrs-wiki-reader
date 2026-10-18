@@ -81,7 +81,13 @@ SCENARIOS = [
     dict(name="ctxsel", mode="ctxsel", size=(1100, 900), expect={"selBtn": True, "hasSel": True}),
     dict(name="ctxsend", mode="ctxsend", size=(1100, 900),
          expect={"sentCtx": lambda v: v["page"] == "Abyssal whip" and v["selection"].startswith("The abyssal whip is")}),
-    dict(name="guide", mode="guide", size=(1100, 900), expect={"guideOpen": True}),
+    dict(name="guide", mode="guide", size=(1100, 900), expect={"tourOpen": True, "tourTitle": "Welcome to OSRS Wiki Reader"}),
+    dict(name="guidecard", mode="guidecard", size=(1100, 900), expect={"guideOpen": True}),
+    # new player: the tour moves on by itself after each action, the spotlight sits on the target, Esc ends it
+    dict(name="tour", mode="tour", size=(1100, 760), params={"nokey": 1}, budget=20000,
+         expect={"steps": 14, "ringOnPersonIcon": True, "afterPersonIcon": "Look yourself up",
+                 "afterLookup": "Tell the app it’s you", "afterWiseOldMan": "Get a free key (1 minute)",
+                 "afterGear": "Hotkeys that work in-game", "ringOnHotkeys": True, "closedByEsc": True, "guideSeen": True}),
     dict(name="mini", mode="mini", size=(520, 700), expect={}),
     dict(name="update", mode="update", size=(1100, 900), budget=9000, expect={"updateModal": True}),
 ]

@@ -629,6 +629,57 @@ body.maxed .grips { display: none; }   /* a maximized window isn't resized from 
 .modal.guide .modal-msg { text-align: center; }
 
 
+.guide-tour {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 16px; height: auto; padding: 10px 16px;
+  font-size: 14px; text-align: left;
+}
+.guide-tour span { font-size: 12px; font-weight: 400; opacity: .8; }
+
+/* ---------------- guided tour: spotlight + instruction card ---------------- */
+
+.tour-layer { position: fixed; inset: 0; z-index: 300; pointer-events: none; }
+.tour-dim {
+  position: fixed; pointer-events: auto; background: rgba(0, 0, 0, .58);
+  transition: left 220ms var(--ease), top 220ms var(--ease), width 220ms var(--ease), height 220ms var(--ease);
+}
+[data-theme="light"] .tour-dim { background: rgba(20, 16, 12, .45); }
+.tour-ring {
+  position: fixed; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px rgba(226, 178, 89, .22), 0 0 26px 6px rgba(226, 178, 89, .35);
+  transition: left 220ms var(--ease), top 220ms var(--ease), width 220ms var(--ease), height 220ms var(--ease), opacity 160ms;
+  animation: tour-pulse 1.8s ease-in-out infinite;
+}
+@keyframes tour-pulse { 50% { box-shadow: 0 0 0 2px var(--accent), 0 0 0 9px rgba(226, 178, 89, .12), 0 0 34px 10px rgba(226, 178, 89, .28); } }
+.tour-card {
+  position: fixed; width: min(360px, calc(100vw - 24px)); padding: 14px 16px 14px 18px; pointer-events: auto;
+  border-radius: 16px; background: var(--glass-strong); backdrop-filter: blur(30px) saturate(1.7); -webkit-backdrop-filter: blur(30px) saturate(1.7);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--line-strong), var(--highlight);
+  transition: left 220ms var(--ease), top 220ms var(--ease), opacity 160ms;
+}
+.tour-card.moving { opacity: .0; }
+.tour-top { display: flex; align-items: center; justify-content: space-between; margin: -4px -8px 2px 0; }
+.tour-top span { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.tour-x { width: 28px; height: 28px; }
+.tour-x .ic { width: 14px; height: 14px; }
+.tour-card h3 { margin: 0 0 6px; font: 600 17px/1.3 var(--font-display); letter-spacing: -.01em; color: var(--text); }
+.tour-card p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text-2); }
+.tour-card p b { color: var(--text); font-weight: 600; }
+.tour-card kbd {
+  display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 5px; text-align: center;
+  font: 500 12px/1.6 var(--font); color: var(--text); background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 1px 0 var(--line-strong);
+}
+.tour-warn {
+  display: block; margin-top: 10px; padding: 8px 10px; border-radius: var(--r-md); font-size: 12.5px;
+  background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent);
+}
+.tour-wait { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--text-3); }
+.tour-wait i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; animation: tour-blink 1.2s ease-in-out infinite; }
+@keyframes tour-blink { 50% { opacity: .25; } }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.tour-actions > div { display: flex; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .tour-ring { animation: none; } .tour-dim, .tour-ring, .tour-card { transition: none; } }
+
 /* ---------------- update banner ---------------- */
 
 .update-banner {

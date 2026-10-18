@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.4.3"
+VERSION = "1.4.4"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -395,7 +395,7 @@ DEFAULTS = {
     "zoom": 100,
     "hotkey": "Ctrl+Alt+W",  # display label, or "Off"
     "hotkey_spec": None,     # [modifiers, virtual key]; None = look the label up in HOTKEYS
-    "guide_seen": False,     # the Quick guide opens once by itself (first launch, or after updating to 1.4.3)
+    "tour_seen": False,      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
     "ask_hotkey": "Ctrl+Alt+Q",          # opens the Wise Old Man chat
     "ask_hotkey_spec": [0x0001 | 0x0002, 0x51],
     "recent": [],
@@ -1621,7 +1621,7 @@ class Api:
             "hotkey": self._cfg["hotkey"],
             "hotkeyOk": self._hotkey_ok,
             "askHotkey": self._cfg["ask_hotkey"],
-            "guideSeen": bool(self._cfg.get("guide_seen")),
+            "guideSeen": bool(self._cfg.get("tour_seen")),
             "hotkeyTypes": self._hk_types["show"],
             "askHotkeyTypes": self._hk_types["ask"],
             "askHotkeyOk": self._ask_hotkey_ok,
@@ -1641,7 +1641,7 @@ class Api:
         elif key == "clear_recent":
             self._cfg["recent"] = []
         elif key == "guide_seen":
-            self._cfg["guide_seen"] = bool(value)
+            self._cfg["tour_seen"] = bool(value)
         save_config(self._cfg)
         return self.get_state()
 

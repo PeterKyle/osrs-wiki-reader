@@ -67,3 +67,4 @@ guideModal.querySelector('.guide-steps').addEventListener('click', (e) => {
   else if (go.dataset.go === 'hotkeys') $('btnSettings').click();
 });
 $('btnGuide').onclick = () => openGuide();
+$('guideTour').onclick = () => { closeGuide(); startTour(); };
