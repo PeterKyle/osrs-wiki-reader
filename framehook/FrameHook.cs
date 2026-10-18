@@ -28,6 +28,9 @@ namespace OsrsWikiReader
         [StructLayout(LayoutKind.Sequential)]
         struct POINT { public int X, Y; }
 
+        [StructLayout(LayoutKind.Sequential)]
+        struct APPBARDATA { public int Size; public IntPtr Hwnd; public uint CallbackMessage, Edge; public RECT Rc; public IntPtr LParam; }
+
         // Posted by Python (any thread) when the title bar is pressed: hand the drag to Windows.
         public const int WM_START_DRAG = 0x8000 + 0x51;   // WM_APP + 0x51
 
@@ -35,7 +38,8 @@ namespace OsrsWikiReader
         public volatile int MoveLoops;
 
         [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr hwnd);
-        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromRect(ref RECT rect, uint flags);
+        [DllImport("shell32.dll")] static extern IntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
         [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
@@ -84,13 +88,25 @@ namespace OsrsWikiReader
             catch (Exception) { }
         }
 
-        public FrameHook(IntPtr hwnd)
+        FrameHook(IntPtr hwnd) { AssignHandle(hwnd); }
+
+        // Python calls this static method rather than the constructor: pythonnet keeps the GIL during constructor
+        // calls, and the style change below waits for the UI thread, which may itself be waiting for the GIL.
+        public static FrameHook Attach(IntPtr hwnd)
         {
-            AssignHandle(hwnd);
+            var hook = new FrameHook(hwnd);
             long style = GetWindowLongPtr(hwnd, -16).ToInt64();   // GWL_STYLE
             SetWindowLongPtr(hwnd, -16, new IntPtr(style | Style));
             // FRAMECHANGED (re-run WM_NCCALCSIZE) | NOMOVE | NOSIZE | NOZORDER | NOACTIVATE
             SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004 | 0x0010);
+            return hook;
+        }
+
+        // Is there an auto-hide taskbar on this edge (0 left, 1 top, 2 right, 3 bottom) of the monitor?
+        static bool AutoHideBar(uint edge, RECT monitor)
+        {
+            var abd = new APPBARDATA { Size = Marshal.SizeOf(typeof(APPBARDATA)), Edge = edge, Rc = monitor };
+            return SHAppBarMessage(0x0000000B, ref abd) != IntPtr.Zero;   // ABM_GETAUTOHIDEBAREX
         }
 
         protected override void WndProc(ref Message m)
@@ -111,10 +127,20 @@ namespace OsrsWikiReader
                         if (IsZoomed(m.HWnd))
                         {
                             // Windows maximizes framed windows a few pixels past the screen edges (the hidden
-                            // border); keep the content to the visible work area so nothing gets cut off.
+                            // border); keep the content to the visible work area so nothing gets cut off. Use the
+                            // monitor of the proposed rect (Win+Shift+Arrow moves a maximized window to another one).
+                            var proposed = (RECT)Marshal.PtrToStructure(m.LParam, typeof(RECT));   // NCCALCSIZE_PARAMS.rgrc[0]
                             var mi = new MONITORINFO { Size = Marshal.SizeOf(typeof(MONITORINFO)) };
-                            if (GetMonitorInfo(MonitorFromWindow(m.HWnd, 2), ref mi))
-                                Marshal.StructureToPtr(mi.Work, m.LParam, false);   // NCCALCSIZE_PARAMS.rgrc[0]
+                            if (GetMonitorInfo(MonitorFromRect(ref proposed, 2), ref mi))
+                            {
+                                var work = mi.Work;
+                                // leave 1px for an auto-hide taskbar, so it can still slide out (like Chromium does)
+                                if (work.Bottom == mi.Monitor.Bottom && AutoHideBar(3, mi.Monitor)) work.Bottom -= 1;
+                                else if (work.Top == mi.Monitor.Top && AutoHideBar(1, mi.Monitor)) work.Top += 1;
+                                else if (work.Left == mi.Monitor.Left && AutoHideBar(0, mi.Monitor)) work.Left += 1;
+                                else if (work.Right == mi.Monitor.Right && AutoHideBar(2, mi.Monitor)) work.Right -= 1;
+                                Marshal.StructureToPtr(work, m.LParam, false);
+                            }
                         }
                         m.Result = IntPtr.Zero;
                         return;

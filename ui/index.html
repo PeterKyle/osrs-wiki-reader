@@ -160,6 +160,57 @@
     Ask about this
   </button>
 
+  <div class="modal-scrim" id="guideModal" hidden>
+    <div class="modal guide" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+      <div class="guide-head">
+        <img class="modal-logo" src="logo-64.png" srcset="logo-64.png 1x, logo-96.png 1.5x, logo-128.png 2x" alt="">
+        <div><h2 id="guideTitle">Quick guide</h2><p class="modal-sub">Get set up in a minute, plus the keys worth knowing.</p></div>
+      </div>
+      <div class="guide-body">
+        <h3>Set up</h3>
+        <ol class="guide-steps">
+          <li data-step="char"><div><b>Your account</b><span>Click the person icon, look yourself up and press <b>This is me</b>. Quest and skill pages then tick off what you meet, and the Wise Old Man knows your levels.</span>
+            <div class="guide-act"><button class="btn small" data-go="char">Set my account</button><em class="guide-done"></em></div>
+            <img class="guide-shot" src="guide/me.webp" alt="The Character tab with the This is me button circled" loading="lazy"></div></li>
+          <li data-step="ask"><div><b>The Wise Old Man (AI helper)</b><span>Click his face in the toolbar and connect a free Google Gemini key. It takes about a minute; see <b>How to get a free Gemini key</b> below.</span>
+            <div class="guide-act"><button class="btn small" data-go="ask">Connect</button><em class="guide-done"></em></div>
+            <img class="guide-shot" src="guide/wom.webp" alt="The toolbar with the Wise Old Man button circled" loading="lazy"></div></li>
+          <li data-step="hotkeys"><div><b>Hotkeys</b><span>Open Settings (the gear) and click a hotkey to change it, if it clashes with your game or other apps.</span>
+            <div class="guide-act"><button class="btn small" data-go="hotkeys">Change</button><em class="guide-done"></em></div>
+            <img class="guide-shot tall" src="guide/hotkeys.webp" alt="Settings with the two hotkey buttons circled" loading="lazy"></div></li>
+        </ol>
+        <details class="guide-key">
+          <summary>How to get a free Gemini key</summary>
+          <ol>
+            <li>Open <a href="https://aistudio.google.com/apikey" data-ext>Google AI Studio</a> and sign in with your Google (Gmail) account. Accept the terms if it asks.</li>
+            <li>Click <b>Create API key</b>. If it asks for a project, pick the suggested one or create a new one.</li>
+            <li>In the list of keys, check its tier says <b>Free</b>.</li>
+            <li>Copy the key and paste it into the Wise Old Man chat.</li>
+          </ol>
+          <img class="guide-shot tall" src="guide/connect.webp" alt="The Wise Old Man's setup steps, with the Open Google AI Studio button circled" loading="lazy">
+          <p class="guide-free"><b>Keep it free:</b> in AI Studio, never click <b>Set up billing</b> or <b>Upgrade</b>, and never add a card. A key without billing can't be charged; if you use up the free amount, it just pauses until the next day. If Google won't give you a key without adding billing, stop there.</p>
+        </details>
+        <h3>Keyboard shortcuts</h3>
+        <table class="guide-keys"><tbody id="guideKeys"></tbody></table>
+        <h3>Tips</h3>
+        <figure class="guide-fig">
+          <img class="guide-shot" src="guide/askthis.webp" alt="Highlighting text, pressing Ask about this, and the Wise Old Man answering" loading="lazy">
+          <figcaption>Highlight text, press <b>Ask about this</b>, and ask away.</figcaption>
+        </figure>
+        <ul class="guide-tips">
+          <li>Highlight text on any page and press <b>Ask about this</b> to ask the Wise Old Man about it.</li>
+          <li>The chat docks beside the page; drag its left edge to resize. The clock button keeps your last 10 chats.</li>
+          <li>Drag the top bar to the top of the screen for Windows' snap layouts. Double-click it to maximize.</li>
+          <li>The <b>pin</b> keeps the reader above your game, and <b>mini mode</b> shrinks it to a small search bar.</li>
+          <li>Item pages show live Grand Exchange prices, and <b>Alert</b> tells you when a price crosses your target.</li>
+          <li>Quest and diary ticks need the free <b>WikiSync</b> plugin in RuneLite.</li>
+        </ul>
+      </div>
+      <div class="modal-actions"><button class="btn" id="guideDone">Got it</button></div>
+      <p class="modal-msg">Open this again any time: press F1, or Settings → Quick guide.</p>
+    </div>
+  </div>
+
   <div class="modal-scrim" id="updModal" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="updTitle">
       <img class="modal-logo" src="logo-64.png" srcset="logo-64.png 1x, logo-96.png 1.5x, logo-128.png 2x" alt="">
@@ -196,6 +247,7 @@
     <div class="row"><span>Ask: questions per day <span class="dim" id="askUsed"></span></span>
       <div class="stepper"><button id="askLimDown">−</button><output id="askLimVal">50</output><button id="askLimUp">+</button></div>
     </div>
+    <div class="row"><span>Quick guide <span class="dim">F1</span></span><button class="btn small" id="btnGuide">Open</button></div>
     <div class="row"><span>Updates <span class="dim" id="updStatus"></span></span><button class="btn small" id="btnCheckUpdate">Check now</button></div>
     <p class="about">OSRS Wiki Reader <span id="ver"></span><br>Content from the <a href="https://oldschool.runescape.wiki" data-ext>Old School RuneScape Wiki</a> (CC BY-NC-SA 3.0). Unofficial, not affiliated with Jagex or the Wiki.</p>
   </div>
@@ -208,5 +260,6 @@
 <script src="compare.js"></script>
 <script src="mini.js"></script>
 <script src="ask.js"></script>
+<script src="guide.js"></script>
 </body>
 </html>

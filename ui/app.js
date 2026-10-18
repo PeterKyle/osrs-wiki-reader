@@ -43,6 +43,7 @@ window.addEventListener('pywebviewready', async () => {
   renderHome();
   goHome(true);
   focusSearch();
+  if (state.guideSeen === false) setTimeout(() => window.openGuide && openGuide(), 400);   // first launch
 });
 
 window.focusSearch = function () {
@@ -587,8 +588,8 @@ function keyInfo(code) {
 
 // Two global hotkeys share one recorder: "show" (show/hide the reader) and "ask" (open the Wise Old Man).
 const HK = {
-  show: { btn: $('hkKey'), clear: $('hkClear'), label: () => state.hotkey, ok: () => state.hotkeyOk, what: 'Show / hide' },
-  ask: { btn: $('hkKeyAsk'), clear: $('hkClearAsk'), label: () => state.askHotkey, ok: () => state.askHotkeyOk, what: 'Wise Old Man' },
+  show: { btn: $('hkKey'), clear: $('hkClear'), label: () => state.hotkey, ok: () => state.hotkeyOk, types: () => state.hotkeyTypes, what: 'Show / hide' },
+  ask: { btn: $('hkKeyAsk'), clear: $('hkClearAsk'), label: () => state.askHotkey, ok: () => state.askHotkeyOk, types: () => state.askHotkeyTypes, what: 'Wise Old Man' },
 };
 const hk = { btn: null, kind: null, note: $('hotkeyNote'), recording: false };
 
@@ -605,7 +606,9 @@ function renderHotkey() {
     k.btn.classList.remove('rec');
     k.btn.textContent = label === 'Off' ? 'Off (click to set)' : label.replace(/\+/g, ' + ');
     k.clear.hidden = label === 'Off';
-    if (label !== 'Off' && !k.ok()) problem = k === HK.ask && label === state.hotkey
+    if (label !== 'Off' && !k.ok()) problem = k.types()
+      ? `${label} types a character on your keyboard (Ctrl+Alt works as AltGr), so it's switched off. Click it to pick another.`
+      : k === HK.ask && label === state.hotkey
       ? `${label} is already your show / hide hotkey. Click the Wise Old Man one to pick a different combination.`
       : `${label} is already used by another app. Click it to pick a different one.`;
   }
@@ -820,6 +823,9 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 'f') {
     e.preventDefault();
     openFind();
+  } else if (e.key === 'F1') {
+    e.preventDefault();
+    if (window.openGuide) openGuide();
   } else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
     e.preventDefault();
     if (window.newChat) newChat();

@@ -9,12 +9,24 @@ const newChatId = () => Date.now().toString(36) + Math.random().toString(36).sli
 const HTML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
 const unescapeHtml = (s) => s.replace(/&(amp|lt|gt|quot|#39);/g, (m, e) => HTML_ENTITIES[e]);
 
+// Links in AI answers only open official OSRS sites. Wiki pages can be edited by anyone, so a planted
+// "go to this site" instruction can't turn into a clickable phishing link.
+const TRUSTED_HOSTS = ['runescape.wiki', 'runescape.com', 'jagex.com', 'runelite.net', 'wiseoldman.net'];
+function trustedLink(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && TRUSTED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith('.' + h));
+  } catch (e) { return false; }
+}
+
 function renderMarkdown(src) {
   const inline = (s) => escapeHtml(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     // the title is already HTML-escaped here; un-escape it before building the URL ("Ava's device", "A & B")
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, t, label) => `<a href="${wikiHref(unescapeHtml(t.trim()))}">${label || t}</a>`)
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => `<a href="${url}" data-ext>${label}</a>`)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => (trustedLink(unescapeHtml(url))
+      ? `<a href="${url}" data-ext>${label}</a>`
+      : `<span class="link-blocked" title="Not opened: links in answers only go to official OSRS sites">${label}</span>`))
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
     .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
   const lines = src.replace(/\r/g, '').split('\n');
@@ -59,8 +71,9 @@ function setupHtml(error = '') {
       <h3>Ask the Wise Old Man</h3>
       <p>He's an AI helper (Google's Gemini) who reads the matching OSRS Wiki pages before answering. It's <b>free</b>: you connect your own free Gemini key from your Google account.</p>
       <ol>
-        <li><button class="btn small" id="askStudio">Open Google AI Studio</button> and sign in with your Gmail.</li>
-        <li>Click <b>Create API key</b>. No credit card is needed. Don't add billing, so it stays free.</li>
+        <li><button class="btn small" id="askStudio">Open Google AI Studio</button> and sign in with your Google (Gmail) account. Accept the terms if it asks.</li>
+        <li>Click <b>Create API key</b>. If it asks for a project, pick the suggested one or create a new one.</li>
+        <li>In the list of keys, check its tier says <b>Free</b>.</li>
         <li>Copy the key and paste it here:</li>
       </ol>
       <form class="ask-keyform" id="askKeyForm">
@@ -68,6 +81,7 @@ function setupHtml(error = '') {
         <button class="btn small" type="submit">Save</button>
       </form>
       ${error ? `<p class="ask-err">${escapeHtml(error)}</p>` : ''}
+      <p class="ask-free"><b>Keep it free:</b> in AI Studio, never click <b>Set up billing</b> or <b>Upgrade</b>, and never add a card. A key without billing can't be charged; if you use up the free amount, it just pauses until the next day. If Google won't give you a key without adding billing, stop there.</p>
       <p class="dim">Your key is stored encrypted on this PC only. On Google's free tier, Google may use your questions to improve its products, so don't include personal info. Free use has limits per minute and per day. If you reach them, just wait; it never charges you.</p>
     </div>`;
 }
@@ -212,12 +226,14 @@ function addBubble(role, text, sources = [], scroll = true, ctx = null) {
 
 async function send(question) {
   question = question.trim();
-  if (!question || chat.busy) return;
+  if (!question) return;
+  if (chat.busy) { toast('The Wise Old Man is still answering. Ask again in a moment.'); return; }
   chat.busy = true;
   const hist = chat.history;   // the answer belongs to this chat, even if you switch to another meanwhile
   if (!chat.convId) chat.convId = newChatId();
   const convId = chat.convId;
   chat.pendingFor = hist;
+  chat.pendingConvId = convId;
   chat.input.value = '';
   autoGrow();
   const ctx = activeContext();
@@ -392,10 +408,11 @@ askResize.addEventListener('pointerdown', (e) => {
   askResize.classList.add('drag');
   document.body.classList.add('ask-resizing');
 });
+let resizeFrame = 0;
 askResize.addEventListener('pointermove', (e) => {
   if (!askResize.hasPointerCapture(e.pointerId)) return;
   askW = window.innerWidth - e.clientX;
-  updateDock();
+  if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; updateDock(); });   // once per frame
 });
 const endResize = (e) => {
   if (!askResize.hasPointerCapture(e.pointerId)) return;
@@ -479,6 +496,12 @@ function closeHistMenu() {
   histBtn.setAttribute('aria-expanded', 'false');
 }
 async function loadChat(id) {
+  if (chat.busy && id === chat.pendingConvId) {   // its answer is still coming: keep the live copy, not the file's
+    chat.history = chat.pendingFor;
+    chat.convId = id;
+    showChat();
+    return;
+  }
   const c = await api.chat_load(id);
   if (!c) { toast('That chat is no longer saved.'); return; }
   chat.history = c.messages;

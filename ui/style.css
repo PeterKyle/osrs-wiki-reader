@@ -447,6 +447,7 @@ body.ask-resizing, body.ask-resizing * { cursor: ew-resize !important; user-sele
 .msg .md h4 { margin: .7em 0 .3em; font-size: 1em; font-weight: 600; color: var(--text); }
 .msg .md ul, .msg .md ol { padding-left: 1.3em; }
 .msg .md table { font-size: .9em; }
+.msg .link-blocked { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .ask-src { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; box-shadow: 0 -1px 0 var(--line); font-size: var(--fs-cap); color: var(--text-3); }
 .ask-src .chip { font-size: 12px; padding: 3px 10px; color: var(--link); text-decoration: none; }
 .thinking { color: var(--text-3); display: flex; align-items: center; gap: 10px; }
@@ -518,6 +519,7 @@ body.mini .sel-ask { display: none !important; }
 body.mini #btnAsk, body.mini .ask-pop { display: none !important; }
 body.mini #btnMax { display: none !important; }
 body.maxed { border-color: transparent; }   /* no window edge line when it fills the screen */
+body.maxed .grips { display: none; }   /* a maximized window isn't resized from its edges */
 
 /* ---------------- update pop-up: blurred scrim + centered glass card ---------------- */
 
@@ -562,6 +564,70 @@ body.maxed { border-color: transparent; }   /* no window edge line when it fills
 .modal-msg.err { color: var(--danger); }
 .modal-actions { align-self: stretch; display: flex; gap: 10px; margin-top: 8px; }
 .modal-actions .btn { flex: 1; height: 40px; font-size: 14px; }
+
+/* ---------------- quick guide ---------------- */
+
+.modal.guide { width: min(580px, 100%); align-items: stretch; text-align: left; padding: 24px 24px 18px; }
+.guide-head { display: flex; align-items: center; gap: 16px; }
+.guide-head .modal-logo { width: 52px; height: 52px; }
+.guide-head h2 { margin: 0 0 4px; }
+.guide-body { overflow: auto; min-height: 0; margin: 18px -6px 8px; padding: 0 6px; }
+.guide-body h3 { margin: 20px 0 8px; font: 600 12px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.guide-body h3:first-child { margin-top: 0; }
+.guide-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: step; }
+.guide-steps li {
+  display: flex; align-items: flex-start; gap: 14px; padding: 12px 14px; border-radius: var(--r-lg);
+  background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); counter-increment: step;
+}
+.guide-steps li::before {
+  content: counter(step); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font: 600 13px var(--font-display); color: var(--accent-ink); background: var(--accent);
+}
+.guide-steps li.done::before { content: "✓"; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-ring); }
+.guide-steps li > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.guide-steps li > div > b { font-size: 14px; font-weight: 600; color: var(--text); }
+.guide-steps li > div > span { font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.guide-steps li > div > span b { color: var(--text); font-weight: 600; }
+.guide-act { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.guide-shot {
+  display: block; width: 100%; height: auto; margin-top: 12px; border-radius: var(--r-md);
+  box-shadow: 0 0 0 1px var(--line-strong), var(--shadow-sm);
+}
+.guide-shot.tall { width: auto; max-width: 100%; max-height: 300px; }
+.guide-fig { margin: 0 0 10px; }
+.guide-fig .guide-shot { margin-top: 0; }
+.guide-fig figcaption { margin-top: 6px; font-size: 12px; color: var(--text-3); text-align: center; }
+.guide-fig figcaption b { color: var(--text-2); font-weight: 600; }
+.guide-done { font-style: normal; font-size: 12px; color: var(--accent); }
+.guide-done:empty { display: none; }
+.guide-steps .btn { flex: none; }
+.guide-steps li::before { margin-top: 1px; }
+.guide-key { margin-top: 8px; padding: 10px 14px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.guide-key summary { cursor: pointer; font-weight: 500; color: var(--text); }
+.guide-key ol { margin: 8px 0 0; padding-left: 1.3em; }
+.guide-key li { margin: 4px 0; }
+.guide-key b, .guide-free b { color: var(--text); font-weight: 600; }
+.guide-key a { color: var(--link); }
+.guide-free, .ask-free {
+  margin: 10px 0 2px; padding: 10px 12px; border-radius: var(--r-md); font-size: 13px; line-height: 1.5; color: var(--text-2);
+  background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent);
+}
+.guide-keys { width: 100%; border-collapse: collapse; font-size: 13px; }
+.guide-keys td { padding: 6px 0; vertical-align: middle; box-shadow: 0 1px 0 var(--line); }
+.guide-keys tr:last-child td { box-shadow: none; }
+.guide-keys td:first-child { width: 1%; white-space: nowrap; padding-right: 16px; }
+.guide-keys td:last-child { color: var(--text-2); }
+.guide-keys kbd {
+  display: inline-block; min-width: 24px; padding: 2px 7px; border-radius: 6px; text-align: center;
+  font: 500 12px/1.5 var(--font); color: var(--text); background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 1px 0 var(--line-strong);
+}
+.guide-keys .plus { margin: 0 4px; color: var(--text-3); font-size: 12px; }
+.guide-tips { margin: 0; padding-left: 1.15em; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.guide-tips li { margin: 4px 0; }
+.guide-tips b { color: var(--text); font-weight: 600; }
+.modal.guide .modal-msg { text-align: center; }
+
 
 /* ---------------- update banner ---------------- */
 
