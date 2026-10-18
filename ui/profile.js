@@ -143,6 +143,7 @@ async function renderBank(p) {
   if (!box.isConnected || (!isMe && !info.imported)) { box.innerHTML = ''; return; }
   box.innerHTML = `<h2 class="home-h">Bank</h2><div class="c-card bank-card">` + (info.imported
     ? `<div><b>${fmt(info.different)}</b> different items <span class="dim">· imported ${timeAgo(info.updated * 1000)}</span>
+        ${bankAgeDays(info.updated) >= BANK_STALE_DAYS ? `<div class="bank-stale">Your bank was imported ${bankAgeDays(info.updated)} days ago. Re-import it so the ticks stay right.</div>` : ''}
         <div id="bankValue" class="bank-value"></div>
         <p class="dim">Item pages show how many you have, boss pages tick the recommended gear you own.</p>
         <input id="bankSearch" class="bank-search" placeholder="Search your bank" autocomplete="off" spellcheck="false">
@@ -321,6 +322,31 @@ function sourcesText(src) {
   return parts.join('; ');
 }
 
+// item set pages and their pieces: which pieces of the set are in your bank
+window.showSetProgress = async function (title) {
+  if (!state.me) return;
+  const sets = await api.set_progress(title);
+  const article = els.article;
+  if (!sets || !sets.length || article.hidden || nav.stack[nav.idx].title !== title || article.querySelector('.setprog')) return;
+  const box = document.createElement('div');
+  box.className = 'setprog';
+  box.innerHTML = sets.map((s) => {
+    const n = s.pieces.filter((x) => x.have).length;
+    const missing = s.pieces.filter((x) => !x.have);
+    const head = s.owned ? `You have the whole <b>${escapeHtml(s.set)}</b> (as a set)`
+      : `<a href="${wikiHref(s.set)}">${escapeHtml(s.set)}</a>: <b>${n}/${s.pieces.length}</b> pieces in your bank` +
+        (missing.length && missing.length < s.pieces.length ? `, missing ${missing.map((x) => escapeHtml(x.name)).join(', ')}` : '');
+    return `<div class="setprog-row"><div>${head}</div><div class="setprog-pieces">${s.pieces.map((x) =>
+      `<a href="${wikiHref(x.name)}" class="${x.have || s.owned ? 'own' : ''}">${x.have || s.owned ? svgIcon('i-check') : ''}${escapeHtml(x.name)}</a>`).join('')}</div></div>`;
+  }).join('');
+  const after = article.querySelector('.inbank') || article.querySelector('.mykc') || article.querySelector('h1');
+  if (after) after.after(box); else article.prepend(box);
+};
+
+// an old import makes the ticks wrong: nudge after a week
+const BANK_STALE_DAYS = 7;
+const bankAgeDays = (updated) => Math.floor((Date.now() / 1000 - (updated || 0)) / 86400);
+
 /* ---------------- boss pages: recommended gear (best and budget per slot) ---------------- */
 
 const SLOT_NAMES = { head: 'Head', cape: 'Cape', neck: 'Neck', ammo: 'Ammo', weapon: 'Weapon', body: 'Body', shield: 'Shield',
@@ -347,7 +373,10 @@ window.showGear = async function (title) {
         <span>${x.have ? `<span class="dim">${escapeHtml(x.have)} →</span> ` : '<span class="dim">nothing yet →</span> '}${x.next.slice(0, 2).map((n) => `${item(n)} <span class="gear-price">${gp(n.price)}</span> <button class="linkbtn where" data-item="${escapeHtml(n.name)}">Where?</button>`).join('<span class="dim"> or </span>')}</span></div>`).join('') + `</div>`;
   };
   const opts = (list) => (list.length ? list.slice(0, 2).map(item).join('<span class="dim"> or </span>') : '<span class="dim">–</span>');
-  const panel = (i) => (owned ? `<div class="gear-own">You own ${ownCount(i)[0]} of the ${ownCount(i)[1]} best picks for this setup.</div>` : '') +
+  const bankInfo = owned ? await api.bank_info() : null;
+  const stale = bankInfo && bankInfo.imported && bankAgeDays(bankInfo.updated) >= BANK_STALE_DAYS
+    ? ` <span class="bank-stale-inline">(bank imported ${bankAgeDays(bankInfo.updated)} days ago; re-import on your profile)</span>` : '';
+  const panel = (i) => (owned ? `<div class="gear-own">You own ${ownCount(i)[0]} of the ${ownCount(i)[1]} best picks for this setup.${stale}</div>` : '') +
     `<div class="gear-grid"><span class="gear-h"></span><span class="gear-h">Best</span><span class="gear-h">Budget</span>` +
     Object.entries(setups[i].slots).map(([slot, v]) => `<span class="gear-slot">${SLOT_NAMES[slot] || slot}</span><span>${opts(v.best)}</span><span>${opts(v.budget)}</span>`).join('') + `</div>` +
     upgradesHtml(i);

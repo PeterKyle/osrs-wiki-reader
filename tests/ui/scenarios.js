@@ -169,6 +169,17 @@ const S = {
     if (where) { where.click(); await wait(400); }
     return { hits, makeXp, makeProfit, where: ((els.article.querySelector('.where-info') || {}).textContent || '').trim() };
   },
+  async setprog() {
+    state.me = 'Clyde Lives';
+    for (const m of ['save_account', 'set_me']) { const real = api[m]; api[m] = async (...a) => ({ ...(await real(...a)), me: 'Clyde Lives' }); }
+    window.__BANK = { "Karil's leathertop": 1, "Karil's leatherskirt": 1, "Karil's crossbow": 1 };
+    window.__BANK_UPDATED = Date.now() / 1000 - 10 * 86400;   // imported 10 days ago
+    await openPage("Karil's leathertop"); await wait(1000);
+    const row = els.article.querySelector('.setprog-row');
+    await openCharacter('Clyde Lives'); await wait(1300);
+    return { set: row ? row.firstElementChild.textContent.replace(/\s+/g, ' ').trim() : null,
+      stale: (($id('pxBank').querySelector('.bank-stale') || {}).textContent || '').trim() };
+  },
   async pets() {
     await openCharacter('Clyde Lives'); await wait(1500);
     const box = $id('pxPets'); box.scrollIntoView(); els.scroller.scrollTop -= 80; await wait(300);

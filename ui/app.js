@@ -248,6 +248,7 @@ function renderArticle(res) {
   if (window.showGear) showGear(res.title);
   if (window.showInBank) showInBank(res.title);
   if (window.markOwnedLinks) markOwnedLinks(res.title);
+  if (window.showSetProgress) showSetProgress(res.title);
   if (window.updateBookmarkBtn) updateBookmarkBtn();
 }
 

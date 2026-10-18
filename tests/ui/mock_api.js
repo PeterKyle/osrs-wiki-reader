@@ -88,7 +88,8 @@ const API = {
     return { rsn, imported: true, updated: Date.now() / 1000, different: Object.keys(items).length, total: Object.values(items).reduce((a, b) => a + b, 0) };
   },
   clear_bank: async (rsn) => { window.__BANK = null; return { rsn, imported: false }; },
-  bank_info: async (rsn) => (window.__BANK ? { rsn, imported: true, updated: Date.now() / 1000, different: Object.keys(window.__BANK).length } : { rsn, imported: false }),
+  bank_info: async (rsn) => (window.__BANK ? { rsn, imported: true, updated: window.__BANK_UPDATED || Date.now() / 1000, different: Object.keys(window.__BANK).length } : { rsn, imported: false }),
+  set_progress: async (t) => (window.__BANK ? clone(((window.__PROFILE.setProgress || {})[t]) || []) : null),
   bank_has: async (names, generic) => {
     if (!window.__BANK) return null;
     const have = Object.fromEntries(Object.entries(window.__BANK).map(([k, v]) => [k.toLowerCase(), v]));

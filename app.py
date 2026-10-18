@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.6.3"
+VERSION = "1.6.4"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -886,6 +886,46 @@ def compact_recipes(rows):
             continue
         if isinstance(o, dict) and o.get("name") and mats:
             out.append({"out": o["name"], "q": float(o.get("quantity") or 1), "mats": mats, "skills": skills})
+    return out
+
+
+def parse_item_sets(rows):
+    """{set name: [piece names]} for the Grand Exchange item sets, worked out from each set's examine text
+    ("A set containing a Karil's coif, leatherskirt, leathertop and crossbow.") and checked against the wiki's real
+    item names. Sets whose pieces can't all be matched (potion sets, the cannon...) are left out rather than guessed."""
+    names = {r["page_name"].lower(): r["page_name"] for r in rows or [] if r.get("page_name")}
+    short = {"legs": "platelegs", "skirt": "plateskirt"}
+    words = {"legs": "platelegs", "skirt": "plateskirt", "helm": "full helm"}
+    syn = lambda x: [x, x.replace("dragonhide", "d'hide"), short.get(x, x)]
+    out = {}
+    for r in rows or []:
+        set_name, examine = r.get("page_name"), str(r.get("examine") or "")
+        m = re.match(r"\s*A set containing (.+?)\.?\s*$", examine, re.I)
+        if not set_name or not m:
+            continue
+        parts = [re.sub(r"^(?:an?|the|some)\s+", "", p.strip(), flags=re.I)
+                 for p in re.split(r",\s*|\s+and\s+", m.group(1)) if p.strip()]
+        base = re.sub(r"\s*(?:armour |robes? )?set\b.*$", "", set_name, flags=re.I).strip()   # "Bronze set (lg)" -> "Bronze"
+        prefixes = [p for p in (parts[0].rsplit(" ", 1)[0] + " " if " " in parts[0] else "", base + " ") if p.strip()]
+        trim = " (g)" if "gold-trimmed" in base.lower() else " (t)" if "trimmed" in base.lower() else ""
+        core = re.sub(r"\s*(gold-)?trimmed", "", base, flags=re.I).strip()
+        pieces = []
+        for p in parts:
+            cands = []
+            for v in syn(p):
+                cands += [pre + v for pre in prefixes] + [pre + v.lower() for pre in prefixes]
+            if trim:   # "Bronze trimmed set" -> "Bronze full helm (t)"
+                cands += [f"{core} {v}{trim}" for v in syn(p)]
+            cands += syn(p)   # the piece as written comes last, so "Karil's crossbow" wins over "Crossbow"
+            cands = [c2 for c in cands for c2 in (c, c.replace("dragonhide", "d'hide"),
+                     c.rsplit(" ", 1)[0] + " " + words[c.rsplit(" ", 1)[1]] if " " in c and c.rsplit(" ", 1)[1] in words else c)]
+            hit = next((names[c.lower()] for c in cands if c.lower() in names), None)
+            if not hit:
+                pieces = None
+                break
+            pieces.append(hit)
+        if pieces and len(pieces) >= 2:
+            out[set_name] = pieces
     return out
 
 
@@ -2476,6 +2516,34 @@ class Api:
         by_xp = sorted((x for x in rows if x["xp"] > 0), key=lambda x: -x["xp"])[:10]
         by_profit = sorted((x for x in rows if x["profit"] and x["profit"] > 0), key=lambda x: -x["profit"])[:10]
         return {"xp": by_xp, "profit": by_profit, "count": len(rows)}
+
+    def _item_sets(self):
+        def fetch():
+            rows, offset = [], 0
+            while offset < 60000:   # pages of 5,000 (about 17,000 items)
+                page = self._bucket(f"bucket('infobox_item').select('page_name','examine').limit(5000).offset({offset}).run()")
+                rows += page
+                if len(page) < 5000:
+                    break
+                offset += 5000
+            return parse_item_sets(rows)
+        return self._daily("item_sets", fetch) or {}
+
+    def set_progress(self, title):
+        """On a set's page or a piece's page: each set involved, with which pieces are in your bank."""
+        b = self._my_bank()
+        if not b:
+            return None
+        sets = self._item_sets()
+        key = (title or "").strip().lower()
+        found = [(s, p) for s, p in sets.items() if s.lower() == key or any(x.lower() == key for x in p)][:3]
+        if not found:
+            return []
+        have = {}
+        for name, qty in (b.get("items") or {}).items():
+            have[item_key(name)] = have.get(item_key(name), 0) + qty
+        return [{"set": s, "owned": bool(have.get(item_key(s))),
+                 "pieces": [{"name": x, "have": bool(have.get(item_key(x)))} for x in p]} for s, p in found]
 
     def _bank_context(self, texts):
         """For the Wise Old Man: items in your bank that the wiki pages (or the question) mention."""
