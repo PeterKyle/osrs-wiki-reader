@@ -44,6 +44,7 @@ PLAYER_CACHE_SECONDS = 300
 PRICES = "https://prices.runescape.wiki/api/v1/osrs"
 UPDATE_REPO = "PeterKyle/osrs-wiki-reader"  # GitHub releases are checked for newer versions
 GEMINI = "https://generativelanguage.googleapis.com/v1beta"
+PREFERRED_MODEL = "models/gemini-3.5-flash-lite"   # tried first; falls back to the other free Flash models
 GEMINI_SYSTEM = (
     "You are the assistant inside OSRS Wiki Reader, a desktop app for Old School RuneScape (OSRS) players. "
     "Only help with OSRS; if asked about something else, say briefly that you can only help with OSRS. "
@@ -844,6 +845,10 @@ class Api:
         names = [n for v, full, n in found if full] + [n for v, full, n in found if not full]
         if any(m.get("name") == "models/gemini-flash-latest" for m in data.get("models", [])):
             names.append("models/gemini-flash-latest")
+        # Preferred first: biggest free allowance (500/day), fast, rarely overloaded. The rest are fallbacks.
+        if PREFERRED_MODEL in names:
+            names.remove(PREFERRED_MODEL)
+            names.insert(0, PREFERRED_MODEL)
         return names
 
     def gemini_status(self):
