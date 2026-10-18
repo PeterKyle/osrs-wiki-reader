@@ -49,7 +49,11 @@ GEMINI_SYSTEM = (
     "say so and answer from general OSRS knowledge, noting it may be out of date. Never mix up OSRS with RuneScape 3. "
     "Be concise and practical: short paragraphs or bullet lists, with specific levels, items, locations and numbers. "
     "When you mention a wiki page, write its title in double square brackets, like [[Fire cape]]. "
-    "If the player's stats are given, use them to tailor the answer (e.g. what they can do now and what they still need)."
+    "If the player's stats are given, use them to tailor the answer (e.g. what they can do now and what they still need). "
+    "The app can open wiki pages for the player. When they ask you to open, show, pull up or take them to a page or a "
+    "section of one, reply with one short sentence and then put this on its own final line: "
+    "OPEN: Exact page title#Section heading (leave out #Section if they didn't ask for a part of the page). "
+    "Use real OSRS Wiki page titles, e.g. OPEN: Dragon Slayer II#Walkthrough. Never add an OPEN line otherwise."
 )
 STOPWORDS = set(
     "a an the is are was were be been do does did i im i'm me my mine you your we our to of in on at for from with by "
@@ -102,7 +106,8 @@ DEFAULTS = {
     "timers": [],     # [{"id", "label", "minutes", "ends" (epoch s), "notified"}]
     "gemini_key": None,  # Gemini API key, encrypted with Windows DPAPI (base64)
     "gemini_auth": None,  # how Google accepted the key: "header" | "query" | "bearer"
-    "ask_limit": 50,      # max questions per day sent to Gemini (0 = no limit); a safety net on top of Google's free tier
+    "ask_limit": 300,     # max questions per day sent to Gemini (0 = no limit); a safety net on top of Google's free tier
+    "gemini_skip": {},    # model -> epoch time its free quota frees up again
     "ask_used": [None, 0],  # [date, questions asked that day]
 }
 
@@ -943,15 +948,29 @@ class Api:
 
         self._cfg["ask_used"] = [today, used + 1]   # counted per question, even if Google turns it down
         save_config(self._cfg)
+        # Each free model has its own allowance (e.g. 3.8 Flash 20/day, each Flash-Lite 500/day), so use them in
+        # turn and remember which ones are used up, for a minute or until the daily reset.
+        now = time.time()
+        skip = {m: t for m, t in (self._cfg.get("gemini_skip") or {}).items() if t > now}
+        ready = [m for m in models if m not in skip]
+        if not ready:
+            return {"error": f"All the free Gemini models are at their limit right now. The next one frees up in about "
+                             f"{self._wait_text(min(skip.values()) - now)}. It never charges you."}
         limited = False
-        for model in models[:4]:
+        for model in ready[:8]:
             try:
                 status, data = self._gemini_call(f"/{model}:generateContent", key, self._cfg.get("gemini_auth"),
                                                  body=body, timeout=60)
             except Exception as e:
                 return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
-            if status in (429, 404, 500, 503):     # free quota used up / model unavailable: try the next one
-                limited = limited or status == 429
+            if status in (429, 403, 404, 500, 503):   # quota used up / model not available: try the next one
+                if status == 429:
+                    limited = True
+                    skip[model] = self._quota_reset(data, now)
+                elif status in (403, 404):
+                    skip[model] = now + 3 * 86400
+                self._cfg["gemini_skip"] = skip
+                save_config(self._cfg)
                 continue
             if status != 200 or not isinstance(data, dict):
                 msg = ((data or {}).get("error") or {}).get("message", "") if isinstance(data, dict) else ""
@@ -963,10 +982,63 @@ class Api:
                 reason = (cands[0].get("finishReason") if cands else None) or (data.get("promptFeedback") or {}).get("blockReason")
                 return {"error": f"Gemini didn't give an answer ({reason or 'empty response'}). Try rephrasing."}
             self._gemini_model = model.split("/")[-1]
-            return {"answer": text, "sources": [p["title"] for p in pages], "model": self._gemini_model}
+            text, open_page = self._take_open_command(text)
+            return {"answer": text, "sources": [p["title"] for p in pages], "model": self._gemini_model,
+                    "open": open_page}
         if limited:
-            return {"error": "You've hit Gemini's free limit for now. Wait a minute and try again (if it keeps happening, the daily free limit is used up and resets tomorrow). It never charges you."}
+            soonest = min(skip.values(), default=now + 60)
+            return {"error": f"All the free Gemini models are at their limit right now. The next one frees up in about "
+                             f"{self._wait_text(soonest - now)}. It never charges you."}
         return {"error": "Gemini is busy or unavailable right now. Try again in a moment."}
+
+    def _take_open_command(self, text):
+        """Strips an "OPEN: Page#Section" line from the answer; returns (answer, {title, anchor} or None).
+        The page must really exist on the wiki (redirects followed), so a made-up title can't open anything."""
+        found = None
+        lines = []
+        for line in text.splitlines():
+            m = re.match(r"^\s*\**\s*OPEN:\s*\[*([^\]#\n]+?)\]*\s*(?:#\s*([^\n]+?))?\s*\**\s*$", line)
+            if m and found is None:
+                found = (m.group(1).strip(), (m.group(2) or "").strip())
+            elif not m:
+                lines.append(line)
+        if not found:
+            return text, None
+        title, section = found
+        try:
+            q = api_get(action="query", titles=title[:250], redirects=1)["query"]
+            page = (q.get("pages") or [{}])[0]
+            if "missing" in page or "invalid" in page:
+                return "\n".join(lines).strip(), None
+            title = page["title"]
+            redirect_anchor = next((r.get("tofragment", "") for r in q.get("redirects", [])), "")
+        except Exception:
+            return "\n".join(lines).strip(), None
+        return "\n".join(lines).strip(), {"title": title, "anchor": section or redirect_anchor}
+
+    @staticmethod
+    def _quota_reset(err, now):
+        """When a model's free quota frees up again, from Google's 429 error details."""
+        e = (err or {}).get("error", {}) if isinstance(err, dict) else {}
+        details = e.get("details") or []
+        quota_ids = " ".join(v.get("quotaId", "") for d in details for v in (d.get("violations") or []))
+        if re.search(r"limit:\s*0\b", e.get("message", "")):
+            return now + 3 * 86400                       # no free allowance for this model at all
+        if "PerDay" in quota_ids:
+            pacific = now - 8 * 3600                     # daily quotas reset at midnight Pacific time
+            return (pacific // 86400 + 1) * 86400 + 8 * 3600
+        delay = next((d.get("retryDelay") for d in details if d.get("retryDelay")), "60s")
+        try:
+            return now + max(5.0, float(str(delay).rstrip("s")))
+        except ValueError:
+            return now + 60
+
+    @staticmethod
+    def _wait_text(seconds):
+        seconds = max(60, int(seconds))
+        if seconds < 3600:
+            return f"{seconds // 60 + 1} min"
+        return f"{seconds // 3600}h {seconds % 3600 // 60}m"
 
     def _player_summary(self):
         me = self._cfg.get("me")

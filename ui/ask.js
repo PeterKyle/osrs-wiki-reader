@@ -84,7 +84,7 @@ function showSetup(error) {
 }
 
 function welcomeHtml() {
-  const examples = ['How do I get a fire cape?', 'What should I train next for quests?', 'Best money making at my levels?', 'Where do I get a dragon defender?'];
+  const examples = ['How do I get a fire cape?', 'What should I train next for quests?', 'Best money making at my levels?', 'Open the Dragon Slayer II walkthrough'];
   return `<div class="ask-welcome"><p>Ask a question about Old School RuneScape.${state.me ? ` Answers take <b>${escapeHtml(state.me)}</b>'s levels into account.` : ''}</p>
     <div class="ask-ex">${examples.map((x) => `<button class="chip" data-q="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join('')}</div></div>`;
 }
@@ -134,9 +134,16 @@ async function send(question) {
     d.textContent = r.error;
     return;
   }
-  chat.history.push({ role: 'user', text: question }, { role: 'model', text: r.answer, sources: r.sources });
+  const answer = r.answer || (r.open ? `Opening ${r.open.title}${r.open.anchor ? ` (${r.open.anchor})` : ''}.` : '');
+  chat.history.push({ role: 'user', text: question }, { role: 'model', text: answer, sources: r.sources });
   $('askModel').textContent = r.model ? `Gemini · ${r.model}` : '';
-  addBubble('model', r.answer, r.sources);
+  addBubble('model', answer, r.sources);
+  if (r.open) {
+    // Gemini asked to open a page: show it (scrolled to the section) and tuck the chat away. ✦ brings it back.
+    closeAsk();
+    await openPage(r.open.title, { anchor: r.open.anchor ? '#' + r.open.anchor.replace(/ /g, '_') : '' });
+    toast(`Opened ${r.open.title}${r.open.anchor ? ' → ' + r.open.anchor : ''}. Press ✦ to go back to the chat.`);
+  }
 }
 
 function autoGrow() {
@@ -157,7 +164,7 @@ function closeAsk() {
 }
 
 // Daily question limit (Settings): an extra cap on top of Google's free tier
-const LIMIT_STEPS = [0, 10, 25, 50, 100, 200];
+const LIMIT_STEPS = [0, 10, 25, 50, 100, 200, 300, 500, 1000];
 function showAskLimit(st) {
   $('askLimVal').textContent = st.limit ? st.limit : 'Off';
   $('askUsed').textContent = `(${st.usedToday} used today)`;
