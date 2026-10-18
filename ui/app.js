@@ -478,6 +478,7 @@ els.search.addEventListener('blur', () => setTimeout(hideSuggest, 120));
 
 function renderHome() {
   if (window.renderLatestUpdate) renderLatestUpdate();
+  if (window.renderFunFact) renderFunFact();
   $('quick').innerHTML = QUICK.map(([title, icon]) =>
     `<button class="qcard" data-title="${escapeHtml(title)}"><span class="qi"><img src="${WIKI}/images/${encodeURIComponent(icon)}" alt=""></span><span>${escapeHtml(title)}</span></button>`
   ).join('');

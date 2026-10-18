@@ -90,7 +90,17 @@ const S = {
   async homeupdate() {
     await wait(1200);
     const c = document.querySelector('#homeUpdate .upd-name');
-    return { update: c ? c.textContent : null };
+    const fact = document.querySelector('#homeFact .fact-card p');
+    const first = fact ? fact.textContent : '';
+    if ($id('factNext')) { $id('factNext').click(); await wait(400); }
+    const second = (document.querySelector('#homeFact .fact-card p') || {}).textContent || '';
+    return { update: c ? c.textContent : null, fact: !!fact, anotherFactIsDifferent: !!second && second !== first };
+  },
+  async petluck() {
+    state.me = 'Clyde Lives';
+    await openPage('Kraken'); await wait(1200);
+    const pet = els.article.querySelector('.mykc-pet');
+    return { pet: pet ? pet.textContent.replace(/\s+/g, ' ').trim() : null };
   },
   async char() { await openCharacter('Lynx Titan'); await wait(600); return { name: (els.char.querySelector('h1, h2') || {}).textContent }; },
   async compare() { await openCompare('Lynx Titan', 'Woox'); await wait(600); },

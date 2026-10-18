@@ -264,3 +264,17 @@
 .upd-name { font: 600 17px/1.3 var(--font-display); color: var(--text); }
 .upd-card p { margin: 2px 0 8px; font-size: 13px; line-height: 1.55; color: var(--text-2);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* pet luck (in the KC banner) */
+.mykc-pet { flex-basis: 100%; padding-top: 8px; margin-top: 2px; box-shadow: 0 -1px 0 var(--accent-ring); font-size: 13px; color: var(--text-2); }
+.mykc-pet b { color: var(--text); }
+.luck { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: var(--r-full); font-size: 11.5px; font-weight: 600; }
+.luck.ok { color: var(--success); background: rgba(80, 170, 100, .14); }
+.luck.meh { color: var(--accent); background: var(--accent-soft); }
+.luck.dry { color: var(--danger); background: rgba(220, 75, 65, .14); }
+
+/* home: Did you know? */
+#homeFact { margin-bottom: 8px; }
+.fact-card p { margin: 6px 0 10px; font-size: 14px; line-height: 1.6; color: var(--text); }
+.fact-actions { display: flex; align-items: center; gap: 14px; }
+.fact-actions .linkbtn { font-size: 13px; }

@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -671,6 +671,85 @@ def parse_gim_group(html_text):
     return members
 
 
+# Pet table names / rate labels -> the hiscores entry the kill count comes from
+PET_BOSS_ALIASES = {"tzhaar fight cave": "TzTok-Jad", "inferno": "TzKal-Zuk", "royal titans": "The Royal Titans",
+                    "master clue scrolls": "Clue Scrolls (master)"}
+PET_LABEL_ALIASES = {
+    "callisto": "Callisto", "artio": "Artio", "venenatis": "Venenatis", "spindel": "Spindel", "vet'ion": "Vet'ion",
+    "calvar'ion": "Calvar'ion", "elemental": "Chaos Elemental", "fanatic": "Chaos Fanatic",
+    "normal mode": "Theatre of Blood", "hard mode": "Theatre of Blood: Hard Mode",
+    "normal gauntlet": "The Gauntlet", "corrupted gauntlet": "The Corrupted Gauntlet",
+}
+PET_SKIP = ("Chambers of Xeric", "Tombs of Amascut")   # rates per purple / varying: can't be judged from a kill count
+
+
+def parse_pet_rates(page_html):
+    """{hiscores name: {pet, rate, note}} from the wiki's boss pets table. Ranges and "varies" are left out."""
+    clean = lambda c: re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", c))).strip()
+    out = {}
+    for row in re.findall(r"<tr>(.*?)</tr>", page_html, re.S):
+        cells = [clean(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)]
+        if len(cells) < 4 or not cells[3].startswith("1/"):
+            continue
+        pet, boss, rate_text = cells[1], re.sub(r"\[\s*\w+\s*\]", "", cells[2]).strip(), cells[3]
+        if boss in PET_SKIP or " to " in rate_text or re.search(r"1/[\d,.]+\s*-\s*1/", rate_text):
+            continue
+        rates = re.findall(r"1/([\d,.]+)(?:\s*\(([^)]*)\))?", rate_text)
+        for i, (n, label) in enumerate(rates):
+            target = PET_LABEL_ALIASES.get(label.strip().lower())
+            aliased = bool(target)
+            if not target:
+                if i:   # extra rates for other methods (sacrifice, contracts...): keep the first, main one
+                    continue
+                target = PET_BOSS_ALIASES.get(boss.lower(), boss)
+            try:
+                rate = float(n.replace(",", ""))
+            except ValueError:
+                continue
+            if rate >= 1:
+                out[target] = {"pet": pet, "rate": rate, "note": "" if aliased else label.strip()}
+    return out
+
+
+def _strip_wikitext(text):
+    text = re.sub(r"<ref[^>]*?/>|<ref.*?</ref>", "", text, flags=re.S)
+    text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", text)          # [[page|label]] -> label
+    text = re.sub(r"\[https?://\S+\s+([^\]]+)\]", r"\1", text)               # [url label] -> label
+    text = re.sub(r"\{\{[^{}]*\}\}", "", text)                                   # leftover small templates
+    text = re.sub(r"<[^>]+>", "", text).replace("\'\'\'", "").replace("\'\'", "")
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def parse_fun_facts(src):
+    """The wiki team's numbered fun facts: {{Quote|OSRS FUN FACT #N: ...}} blocks."""
+    facts, i = [], 0
+    while True:
+        i = src.find("{{Quote|", i)
+        if i < 0:
+            break
+        depth, j = 0, i
+        while j < len(src):   # find the matching }} (facts may contain other templates)
+            if src.startswith("{{", j):
+                depth += 1; j += 2
+            elif src.startswith("}}", j):
+                depth -= 1; j += 2
+                if depth == 0:
+                    break
+            else:
+                j += 1
+        body = src[i + len("{{Quote|"):j - 2]
+        i = j
+        num = re.match(r"\s*OSRS FUN FACT\s*#\s*(\d+)\s*:?\s*", body, re.I)
+        if num:
+            body = body[num.end():]
+        link = re.search(r"\[\[([^\]|#]+)", body)
+        text = _strip_wikitext(body)
+        if 20 <= len(text) <= 600 and not text.endswith(":"):   # ":" = the fact continues in a picture
+            facts.append({"n": int(num.group(1)) if num else None, "text": text,
+                          "page": link.group(1).strip() if link else None})
+    return facts
+
+
 def fetch_account_type(name):
     """'ultimate' | 'hardcore' | 'ironman' | 'regular', from which official hiscores list the player.
     (An ultimate is also on the ironman board, so check the most specific first.)"""
@@ -712,6 +791,7 @@ class Api:
         self._mem_lock = threading.Lock()   # guards the in-memory caches (pywebview runs API calls on parallel threads)
         self._chats_lock = threading.Lock()
         self._extras, self._gim, self._img, self._update = {}, {}, {}, None
+        self._pets = self._facts = None
         self._notifier = None
         self._mini = False
         self._full_rect = None
@@ -1679,6 +1759,32 @@ class Api:
         self._cfg["gim_groups"] = groups
         save_config(self._cfg)
         return {"group": group, "members": members}
+
+    # ---- boss pages: pet drop rates; home: Wiki Fun Facts (both change rarely: cached for a day) ----
+    def pet_rates(self):
+        if self._pets and time.time() - self._pets[0] < 86400:
+            return self._pets[1]
+        try:
+            text = api_get(action="parse", page="Pet", prop="text")["parse"]["text"]
+            rates = parse_pet_rates(text)
+        except Exception:
+            return {}
+        if rates:
+            self._pets = (time.time(), rates)
+        return rates
+
+    def fun_facts(self):
+        if self._facts and time.time() - self._facts[0] < 86400:
+            return self._facts[1]
+        try:
+            pg = api_get(action="query", titles="RuneScape:Wiki Fun Facts", prop="revisions", rvprop="content",
+                         rvslots="main")["query"]["pages"][0]
+            facts = parse_fun_facts(pg["revisions"][0]["slots"]["main"]["content"])
+        except Exception:
+            return []
+        if facts:
+            self._facts = (time.time(), facts)
+        return facts
 
     # ---- home: the newest game update from the wiki ----
     def latest_update(self):

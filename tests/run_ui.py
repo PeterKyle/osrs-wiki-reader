@@ -89,7 +89,10 @@ SCENARIOS = [
     dict(name="profilechart", mode="profilechart", size=(1100, 900), budget=9000, expect={"chartLine": True}),
     dict(name="share", mode="share", size=(1100, 900), budget=9000, expect={"modal": True, "image": True}),
     dict(name="kc", mode="kc", size=(1100, 800), budget=8000, expect={"banner": True}),
-    dict(name="homeupdate", mode="homeupdate", size=(1100, 900), expect={"update": "More Gathering Efficiencies"}),
+    dict(name="homeupdate", mode="homeupdate", size=(1100, 900),
+         expect={"update": "More Gathering Efficiencies", "fact": True, "anotherFactIsDifferent": True}),
+    dict(name="petluck", mode="petluck", size=(1100, 800), budget=8000,
+         expect={"pet": "Pet Kraken 1/3,000 · after 630 kills, 19% of players would have it by now on rate"}),
     dict(name="guide", mode="guide", size=(1100, 900), expect={"tourOpen": True, "tourTitle": "Welcome to OSRS Wiki Reader"}),
     dict(name="guidecard", mode="guidecard", size=(1100, 900), expect={"guideOpen": True}),
     # new player: the tour moves on by itself after each action, the spotlight sits on the target, Esc ends it

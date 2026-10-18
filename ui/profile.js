@@ -324,9 +324,20 @@ const KC_PAGES = {
   'Tombs of Amascut: Expert Mode': 'Tombs of Amascut', 'Lunar Chests': 'Lunar Chest', 'Deadman Points': 'Deadman Mode',
 };
 
+// Chance of having the pet after n kills at 1/rate: 1 - (1 - 1/rate)^n, shown as "x% of players would have it"
+function petLuckHtml(a, pet) {
+  const pct = (1 - Math.pow(1 - 1 / pet.rate, a.score)) * 100;
+  const shown = pct < 1 ? '<1%' : pct > 99 ? '>99%' : `${Math.round(pct)}%`;
+  const [verdict, cls] = pct < 50 ? ['on rate', 'ok'] : pct < 75 ? ['getting dry', 'meh'] : pct < 90 ? ['dry', 'dry'] : ['very dry', 'dry'];
+  const unit = /clue/i.test(a.name) ? 'clues' : 'kills';
+  return `<div class="mykc-pet"><b>${escapeHtml(pet.pet)}</b> <span class="dim">1/${fmt(pet.rate)}${pet.note ? ` (${escapeHtml(pet.note)})` : ''}</span>
+    · after ${fmt(a.score)} ${unit}, <b>${shown}</b> of players would have it by now <span class="luck ${cls}">${verdict}</span></div>`;
+}
+
 window.showMyKc = async function (title) {
   if (!state.me) return;
-  const p = await api.player(state.me);
+  const [p, pets] = await Promise.all([api.player(state.me), api.pet_rates().catch(() => ({}))]);
+  const petFor = Object.fromEntries(Object.entries(pets || {}).map(([k, v]) => [k.toLowerCase(), v]));
   if (!p || p.error || nav.stack[nav.idx].title !== title) return;
   const t = title.toLowerCase();
   const hits = p.activities.filter((a) => a.score > 0 && ((KC_PAGES[a.name] || a.name).toLowerCase() === t));
@@ -340,9 +351,32 @@ window.showMyKc = async function (title) {
     const label = hits.length > 1 || KC_PAGES[a.name] ? `${escapeHtml(a.name)}: ` : '';
     return `<span class="mykc-item">${label}<b>${fmt(a.score)}</b>${a.name.includes('Clue') || a.name.includes('Rank') || a.name.includes('Zeal') || a.name.includes('Glory') || a.name.includes('Points') || a.name.includes('Logged') || a.name.includes('Rifts') ? '' : ' kills'}
       <span class="dim">· rank #${fmt(a.rank)}</span>${g > 0 ? ` <span class="gain">+${fmt(g)} this week</span>` : ''}</span>`;
-  }).join('');
+  }).join('') + hits.map((a) => (petFor[a.name.toLowerCase()] ? petLuckHtml(a, petFor[a.name.toLowerCase()]) : '')).join('');
   const h1 = article.querySelector('h1');
   if (h1) h1.after(box); else article.prepend(box);
+};
+
+/* ---------------- home: Did you know? (the wiki team's Fun Facts series) ---------------- */
+
+let lastFact = -1;
+window.renderFunFact = async function (again) {
+  const box = $('homeFact');
+  if (!box || (box.dataset.done && !again)) return;
+  const facts = await api.fun_facts();
+  if (!facts || !facts.length || !box.isConnected) return;
+  let i = Math.floor(Math.random() * facts.length);
+  if (facts.length > 1 && i === lastFact) i = (i + 1) % facts.length;
+  lastFact = i;
+  const f = facts[i];
+  const text = f.text.charAt(0).toUpperCase() + f.text.slice(1);
+  box.dataset.done = '1';
+  box.innerHTML = `<div class="c-card fact-card"><div class="upd-label">Did you know?${f.n ? ` <span class="dim">· Wiki Fun Fact #${f.n}</span>` : ''}</div>
+    <p>${escapeHtml(text)}</p>
+    <div class="fact-actions"><button class="btn small" id="factNext">Another fact</button>
+      <button class="linkbtn" id="factMore">More fun facts</button></div></div>`;
+  box.hidden = false;
+  $('factNext').onclick = () => renderFunFact(true);
+  $('factMore').onclick = () => openPage(f.page || 'RuneScape:Wiki Fun Facts');
 };
 
 /* ---------------- home: the newest game update ---------------- */

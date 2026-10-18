@@ -76,6 +76,8 @@ const API = {
   gim_group: async (n) => (String(n).toLowerCase() === 'clyde lives' ? clone(window.__PROFILE.gim) : { needName: true }),
   set_gim_group: async () => clone(window.__PROFILE.gim),
   latest_update: async () => clone(window.__PROFILE.update),
+  pet_rates: async () => clone(window.__PROFILE.pets),
+  fun_facts: async () => clone(window.__PROFILE.facts),
   image_data: async () => ({}),
   copy_image: async () => ({ ok: true }),
   save_image: async () => ({ path: 'C:\Users\you\Pictures\OSRS Wiki Reader\card.png' }),
