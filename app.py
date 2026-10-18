@@ -31,7 +31,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.3.4"
+VERSION = "1.3.5"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -270,6 +270,94 @@ class SnapPreview:
     def close(self):
         user32.DestroyWindow(self.hwnd)
         self.pump()
+
+
+# Own user32 handle so these argtypes (64-bit pointers) don't change ctypes.windll.user32 for anyone else.
+_u32 = ctypes.WinDLL("user32")
+_LRESULT = ctypes.c_ssize_t
+_WNDPROC = ctypes.WINFUNCTYPE(_LRESULT, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM)
+_u32.CallWindowProcW.argtypes = [ctypes.c_void_p, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+_u32.CallWindowProcW.restype = _LRESULT
+_u32.SetWindowLongPtrW.argtypes = [wt.HWND, ctypes.c_int, ctypes.c_void_p]
+_u32.SetWindowLongPtrW.restype = ctypes.c_void_p
+_u32.GetWindowLongPtrW.argtypes = [wt.HWND, ctypes.c_int]
+_u32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+_u32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
+_u32.MonitorFromWindow.restype = wt.HANDLE
+
+
+class _StyleStruct(ctypes.Structure):
+    _fields_ = [("styleOld", wt.DWORD), ("styleNew", wt.DWORD)]
+
+
+class _WindowPlacement(ctypes.Structure):
+    _fields_ = [("length", wt.UINT), ("flags", wt.UINT), ("showCmd", wt.UINT), ("ptMinPosition", wt.POINT),
+                ("ptMaxPosition", wt.POINT), ("rcNormalPosition", wt.RECT)]
+
+
+class NativeFrame:
+    """Gives the frameless window a normal window's style (sizable, minimize/maximize) while keeping the frame
+    itself invisible. Windows then treats it like any other app: it's offered in Snap Assist, Win+Arrow keys
+    snap it, and it gets the native shadow and minimize/restore animations."""
+    STYLE = 0x00C00000 | 0x00040000 | 0x00080000 | 0x00020000 | 0x00010000  # CAPTION THICKFRAME SYSMENU MIN MAX
+
+    def __init__(self, hwnd, on_zoom_change=None):
+        self.hwnd = hwnd
+        self._on_zoom_change = on_zoom_change
+        self._zoomed = False
+        self._proc = _WNDPROC(self._wndproc)   # keep a reference: Windows calls it for the window's lifetime
+        self._old = _u32.SetWindowLongPtrW(hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p))   # GWLP_WNDPROC
+        if not self._old:
+            raise OSError("could not subclass the window")
+        _u32.SetWindowLongPtrW(hwnd, -16, _u32.GetWindowLongPtrW(hwnd, -16) | self.STYLE)          # GWL_STYLE
+        # FRAMECHANGED (re-run WM_NCCALCSIZE) | NOMOVE | NOSIZE | NOZORDER | NOACTIVATE
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004 | 0x0010)
+
+    def _wndproc(self, hwnd, msg, wp, lp):
+        try:
+            if msg == 0x0083 and wp:   # WM_NCCALCSIZE: the whole window is client area (no visible frame)
+                if user32.IsZoomed(hwnd):
+                    # Windows maximizes framed windows a few pixels past the screen edges (the hidden border);
+                    # keep the content to the visible work area so nothing gets cut off.
+                    mi = _MonitorInfo()
+                    mi.cbSize = ctypes.sizeof(_MonitorInfo)
+                    if user32.GetMonitorInfoW(_u32.MonitorFromWindow(hwnd, 2), ctypes.byref(mi)):
+                        ctypes.cast(lp, ctypes.POINTER(wt.RECT))[0] = mi.rcWork   # NCCALCSIZE_PARAMS.rgrc[0]
+                return 0
+            if msg == 0x0086:          # WM_NCACTIVATE: lParam -1 = don't paint a frame on focus changes
+                return _u32.CallWindowProcW(self._old, hwnd, msg, wp, -1)
+            if msg == 0x007C and wp & 0xFFFFFFFF == 0xFFFFFFF0:   # WM_STYLECHANGING (GWL_STYLE): keep the bits
+                ctypes.cast(lp, ctypes.POINTER(_StyleStruct)).contents.styleNew |= self.STYLE
+            if msg == 0x0005 and wp in (0, 2):   # WM_SIZE restored / maximized
+                zoomed = wp == 2
+                if zoomed != self._zoomed:
+                    self._zoomed = zoomed
+                    if self._on_zoom_change:   # not on this (UI) thread: it may wait on the UI thread
+                        threading.Thread(target=self._on_zoom_change, daemon=True).start()
+        except Exception:
+            pass
+        return _u32.CallWindowProcW(self._old, hwnd, msg, wp, lp)
+
+    def zoomed(self):
+        return bool(user32.IsZoomed(self.hwnd))
+
+    def arranged(self):
+        """Snapped by Windows itself (Snap Assist, Win+Arrow, snap layouts)."""
+        try:
+            return bool(user32.IsWindowArranged(self.hwnd))
+        except (AttributeError, OSError):   # older Windows 10
+            return False
+
+    def normal_rect(self):
+        """The size and place the window goes back to after a Windows maximize/snap, in screen coordinates."""
+        wp = _WindowPlacement()
+        wp.length = ctypes.sizeof(_WindowPlacement)
+        if not user32.GetWindowPlacement(self.hwnd, ctypes.byref(wp)):
+            return None
+        r = wp.rcNormalPosition   # workspace coordinates: shifted by the taskbar if it's on the top/left
+        (wl, wt_, _, _), (ml, mt, _, _) = monitor_areas((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        dx, dy = wl - ml, wt_ - mt
+        return r.left + dx, r.top + dy, r.right + dx, r.bottom + dy
 
 
 def clean_release_notes(body):
@@ -511,6 +599,7 @@ class Api:
         self._hotkey_thread_id = None
         self._hotkey_ok = False
         self._ask_hotkey_ok = False
+        self._frame = None   # NativeFrame, once the window exists
         self._hk_done = threading.Event()
 
     # ---- wiki ----
@@ -1515,6 +1604,10 @@ class Api:
         """Maximize to the monitor's work area (taskbar stays visible), or restore. Returns True if maximized."""
         if not self._hwnd or self._mini:
             return False
+        if self._frame and self._frame.zoomed():   # maximized by Windows (Win+Up, Snap Assist): let it restore
+            user32.ShowWindow(self._hwnd, 9)   # SW_RESTORE
+            self._snapped = None
+            return False
         if self._snapped == "max":
             self._set_rect(*self._restore_rect)
             self._snapped = None
@@ -1528,7 +1621,11 @@ class Api:
         return self._snapped == "max"
 
     def is_maximized(self):
-        return self._snapped == "max"
+        return self._snapped == "max" or bool(self._frame and self._frame.zoomed())
+
+    def _windows_snapped(self):
+        """Maximized or snapped by Windows itself rather than by our drag."""
+        return bool(self._frame and not self._snapped and (self._frame.zoomed() or self._frame.arranged()))
 
     def _track(self, mode):
         """Follow the mouse natively until the button is released (smooth move/resize). Moving to a screen edge
@@ -1542,7 +1639,10 @@ class Api:
         button = 0x02 if user32.GetSystemMetrics(23) else 0x01  # honour swapped mouse buttons
         min_w, min_h = 360, 320
         moving = mode == "move" and not self._mini
-        restore_pending = moving and self._snapped is not None
+        windows_snapped = self._windows_snapped()
+        if windows_snapped:   # dragging it out of a Windows snap/maximize goes back to its old size too
+            self._restore_rect = self._frame.normal_rect() or (l0, t0, r0, b0)
+        restore_pending = moving and (self._snapped is not None or windows_snapped)
         if mode != "move" and self._snapped:   # resizing from an edge: it's a normal window again
             self._snapped = None
             self._notify_max_state()
@@ -1560,6 +1660,8 @@ class Api:
                     l0 = start.x - int(w * frac)
                     t0 = start.y - min(18, max(4, start.y - t0))
                     r0, b0 = l0 + w, t0 + h
+                    if self._frame and self._frame.zoomed():
+                        user32.ShowWindow(hwnd, 4)   # SW_SHOWNOACTIVATE: leave Windows' maximized state first
                     self._snapped = None
                     restore_pending = False
                     self._notify_max_state()
@@ -1598,6 +1700,8 @@ class Api:
         if moving and zone:
             if not self._snapped:   # "restore" later goes back to the size and place from before this drag
                 self._restore_rect = (l0, t0, r0, b0)
+            if self._frame and self._frame.zoomed():
+                user32.ShowWindow(hwnd, 4)
             p = wt.POINT()
             user32.GetCursorPos(ctypes.byref(p))
             self._set_rect(*snap_rect(zone, p.x, p.y))
@@ -1606,7 +1710,7 @@ class Api:
 
     def _notify_max_state(self):
         try:
-            self._window.evaluate_js(f"window.onMaxState && onMaxState({json.dumps(self._snapped == 'max')})")
+            self._window.evaluate_js(f"window.onMaxState && onMaxState({json.dumps(self.is_maximized())})")
         except Exception:
             pass
 
@@ -1620,6 +1724,10 @@ class Api:
             ctypes.windll.dwmapi.DwmSetWindowAttribute(self._hwnd, 33, ctypes.byref(ctypes.c_int(2)), 4)
         except Exception:
             pass
+        try:  # a normal window as far as Windows is concerned: Snap Assist, Win+Arrow keys, shadow
+            self._frame = NativeFrame(self._hwnd, on_zoom_change=self._notify_max_state)
+        except Exception:
+            self._frame = None
         rect = self._cfg.get("rect")
         if rect and len(rect) == 4:
             r = wt.RECT(*rect)
@@ -1643,11 +1751,13 @@ class Api:
         if self._hwnd and not user32.IsIconic(self._hwnd):
             if self._snapped and self._restore_rect:   # remember the normal size, and whether it was maximized
                 self._cfg["rect"] = list(self._restore_rect)
+            elif self._windows_snapped() and self._frame.normal_rect():
+                self._cfg["rect"] = list(self._frame.normal_rect())
             else:
                 r = wt.RECT()
                 user32.GetWindowRect(self._hwnd, ctypes.byref(r))
                 self._cfg["rect"] = [r.left, r.top, r.right, r.bottom]
-            self._cfg["maximized"] = self._snapped == "max"
+            self._cfg["maximized"] = self.is_maximized()
         save_config(self._cfg)
 
     def _toggle_visible(self):
