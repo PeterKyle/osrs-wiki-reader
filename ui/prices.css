@@ -99,35 +99,6 @@
 .xc-m b { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
 .xc-more { padding: 10px 12px !important; }
 
-/* farm timers (home) */
-.home-h-act { display: flex; align-items: center; justify-content: space-between; }
-.link-btn {
-  border: 0; background: none; color: var(--link); font: 500 12.5px var(--font); padding: 4px 8px; margin: -4px -8px;
-  border-radius: var(--r-sm); transition: background var(--fast) var(--ease);
-}
-.link-btn:hover { background: var(--fill-hover); color: var(--link-hover); }
-#btnAddTimer2 { color: var(--text-2); }
-#timers:not([hidden]) ~ #btnAddTimer2 { display: none; }
-.trow { display: grid; grid-template-columns: 1fr auto 28px 28px; align-items: center; gap: 6px 10px; padding: 12px 12px 12px 18px; }
-.trow + .trow { box-shadow: 0 -1px 0 var(--line); }
-.tlabel { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tleft { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 13px; }
-.trow.done .tleft { color: var(--success); font-weight: 600; }
-.tbar { grid-column: 1 / -1; height: 4px; background: var(--fill); border-radius: var(--r-full); overflow: hidden; margin-right: 6px; }
-.tbar > span { display: block; height: 100%; background: var(--accent); border-radius: var(--r-full); transition: width .9s linear; }
-.trow.done .tbar > span { background: var(--success); }
-.tbtn-s { width: 28px; height: 28px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3); display: grid; place-items: center; }
-.tbtn-s .ic { width: 14px; height: 14px; }
-.tbtn-s:hover { background: var(--fill-hover); color: var(--text); }
-.timer-add { margin-top: 10px !important; display: flex; flex-direction: column; gap: 12px; }
-.timer-add .chip .dim { font-size: 11px; }
-.timer-add select { height: 34px; }
-.timer-custom { display: flex; gap: 8px; }
-.timer-custom input { height: 34px; padding: 0 10px; min-width: 0; }
-#timerLabel { flex: 1; }
-#timerH, #timerM { width: 60px; }
-.timer-add .dim { margin: 0; font-size: var(--fs-cap); }
-
 /* home: cards, watchlist, bookmarks */
 .home .c-card { margin-top: 0; }
 .home .rows { padding: 4px 0; }

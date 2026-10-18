@@ -8,14 +8,13 @@ A small, fast desktop window for the [Old School RuneScape Wiki](https://oldscho
 
 ## What it does
 
-- **Wiki reader**: clean dark or parchment theme, search with autocomplete, find on page (Ctrl+F), bookmarks, history.
+- **Wiki reader**: a calm, polished design with auto, dark and light themes, search with autocomplete, find on page (Ctrl+F), bookmarks, history.
 - **Show/hide hotkey** you can set to any combination (Ctrl+Alt+W by default), a **pin** to keep it above the game, and a **mini mode** search strip.
 - **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side.
 - **Requirement checks**: set your account and quest, diary and guide pages tick off what you meet. The Character tab lists quests you can start now.
 - **Grand Exchange**: live prices and a price chart on item pages, a watchlist, and price alerts as Windows notifications.
 - **XP calculator** on skill pages, with training methods from the wiki.
-- **Farm run timers** with notifications when your crops are ready.
-- **Ask about OSRS**: chat with Google's Gemini, answered from the matching wiki pages (and your stats). Free: you connect your own free Gemini key from [Google AI Studio](https://aistudio.google.com/apikey), with no billing needed.
+- **Ask the Wise Old Man**: an AI helper (Google's Gemini) that answers from the matching wiki pages and your stats, with Ironman, Hardcore, Ultimate and Group Ironman modes, and can open wiki pages for you. Free: you connect your own free Gemini key from [Google AI Studio](https://aistudio.google.com/apikey), with no billing needed.
 
 Quest and diary progress needs the free **WikiSync** plugin enabled in RuneLite.
 

@@ -143,7 +143,6 @@ DEFAULTS = {
     "watchlist": [],  # GE item ids
     "bookmarks": [],  # page titles
     "alerts": [],     # [{"id", "name", "dir": "above"|"below", "price"}]
-    "timers": [],     # [{"id", "label", "minutes", "ends" (epoch s), "notified"}]
     "gemini_key": None,  # Gemini API key, encrypted with Windows DPAPI (base64)
     "gemini_auth": None,  # how Google accepted the key: "header" | "query" | "bearer"
     "ask_limit": 300,     # max questions per day sent to Gemini (0 = no limit); a safety net on top of Google's free tier
@@ -314,7 +313,6 @@ class Api:
         self._timed = {}      # url -> (fetched_at, data) for short-lived price data
         self._lock = threading.Lock()
         self._notifier = None
-        self._last_price_check = 0
         self._mini = False
         self._full_rect = None
         self._pool = ThreadPoolExecutor(max_workers=3)
@@ -641,67 +639,13 @@ class Api:
         if not self._notifier:
             return
         n = len(self._cfg["alerts"])
-        t = sum(1 for x in self._cfg["timers"] if not x.get("notified"))
-        parts = []
         if n:
-            parts.append(f"{n} price alert{'s' if n != 1 else ''}")
-        if t:
-            parts.append(f"{t} timer{'s' if t != 1 else ''}")
-        if parts:
-            self._notifier.show(f"{APP_NAME}: {' and '.join(parts)}")
+            self._notifier.show(f"{APP_NAME}: {n} price alert{'s' if n != 1 else ''}")
         else:
             self._notifier.hide()
 
-    # ---- farm run timers ----
-    def add_timer(self, label, minutes):
-        minutes = float(minutes)
-        label = (label or "Timer").strip()[:40]
-        if not 0 < minutes <= 14 * 24 * 60:
-            return self.get_state()
-        timer = {"id": int(time.time() * 1000), "label": label, "minutes": minutes,
-                 "ends": time.time() + minutes * 60, "notified": False}
-        self._cfg["timers"] = (self._cfg["timers"] + [timer])[-20:]
-        save_config(self._cfg)
-        self._sync_tray()
-        return self.get_state()
-
-    def remove_timer(self, timer_id):
-        self._cfg["timers"] = [t for t in self._cfg["timers"] if t["id"] != timer_id]
-        save_config(self._cfg)
-        self._sync_tray()
-        return self.get_state()
-
-    def restart_timer(self, timer_id):
-        for t in self._cfg["timers"]:
-            if t["id"] == timer_id:
-                t["ends"] = time.time() + t["minutes"] * 60
-                t["notified"] = False
-        save_config(self._cfg)
-        self._sync_tray()
-        return self.get_state()
-
-    def _check_timers(self):
-        due = [t for t in self._cfg["timers"] if not t.get("notified") and t["ends"] <= time.time()]
-        if not due:
-            return
-        for t in due:
-            t["notified"] = True
-            self._notifier.notify(f"{t['label']} ready!", "Your farm run timer is done. Time to go harvest.", None)
-        save_config(self._cfg)
-        try:
-            self._window.evaluate_js(f"window.onTimersDone && onTimersDone({json.dumps([t['id'] for t in due])})")
-        except Exception:
-            pass
-
-    def _tick(self):
-        """Called by the notifier every 30 s while anything is pending."""
-        self._check_timers()
-        if time.time() - self._last_price_check >= 290:
-            self._last_price_check = time.time()
-            self._check_alerts()
-
     def _check_alerts(self):
-        """Checks price alerts (every ~5 minutes, from _tick)."""
+        """Checks price alerts (every 5 minutes, on the notifier's timer)."""
         alerts = list(self._cfg["alerts"])
         if not alerts:
             return
@@ -724,8 +668,8 @@ class Api:
             word = "risen above" if a["dir"] == "above" else "dropped below"
             self._notifier.notify(f"{a['name']} has {word} {a['price']:,} gp",
                                   f"Now {price:,} gp on the Grand Exchange. Click to open the item.", a["name"])
-        # Leave the tray icon up even if nothing else is pending: removing it would also delete the notification.
-        if self._cfg["alerts"] or any(not t.get("notified") for t in self._cfg["timers"]):
+        # Leave the tray icon up even if no alerts remain: removing it would also delete the notification.
+        if self._cfg["alerts"]:
             self._sync_tray()
         try:
             self._window.evaluate_js(f"window.onAlertsFired && onAlertsFired({json.dumps([a for a, _ in fired])})")
@@ -1258,7 +1202,6 @@ class Api:
             "watchlist": self._cfg["watchlist"],
             "bookmarks": self._cfg["bookmarks"],
             "alerts": self._cfg["alerts"],
-            "timers": self._cfg["timers"],
             "now": time.time(),
         }
 
@@ -1378,7 +1321,7 @@ class Api:
         threading.Thread(target=self._hotkey_loop, daemon=True).start()
         try:
             self._notifier = Notifier(resource_path("ui", "icon.ico"), APP_NAME,
-                                      on_check=self._tick, on_click=self._on_tray_click, interval_ms=30_000)
+                                      on_check=self._check_alerts, on_click=self._on_tray_click)
             self._sync_tray()
         except Exception:
             self._notifier = None

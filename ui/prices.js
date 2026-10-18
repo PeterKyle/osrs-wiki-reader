@@ -254,7 +254,6 @@ function drawChart(box, data, range) {
 
 let watchToken = 0;
 window.renderHomeExtras = async function () {
-  if (window.renderTimers) renderTimers();
   const marks = state.bookmarks || [];
   $('bookmarksWrap').hidden = !marks.length;
   $('bookmarks').innerHTML = marks.map((t) =>
