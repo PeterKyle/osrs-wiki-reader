@@ -191,6 +191,7 @@ function renderPlayer(p) {
       <span class="spacer"></span>
       <button class="cbtn${isMe ? ' on' : ''}" id="btnMe" title="${isMe ? 'This is your account' : 'Use this account for quest requirement checks'}">${svgIcon('i-star')}<span>${isMe ? 'My account' : 'This is me'}</span></button>
       <button class="cbtn" id="btnCompare" title="Compare with another saved account">${svgIcon('i-user')}<span>Compare</span></button>
+      <button class="cbtn" id="btnShare" title="A picture of this profile to paste into Discord">${svgIcon('i-share')}<span>Share</span></button>
       <button class="cbtn" id="btnUpdate" title="Refresh hiscores and update Wise Old Man">${svgIcon('i-refresh')}<span>Update</span></button>
     </div>
     <div class="c-stats">${statBits.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join('')}</div>
@@ -218,6 +219,9 @@ function renderPlayer(p) {
         `</div>`;
     }
   }
+
+  // goals, XP over time, milestones & records, group (profile.js)
+  html += goalsHtml(p) + chartHtml(p) + '<div id="pxExtras"></div><div id="pxGroup"></div>';
 
   // quests & diaries
   html += `<h2 class="home-h">Quests &amp; diaries</h2>`;
@@ -280,6 +284,10 @@ function renderPlayer(p) {
   };
   $('btnUpdate').onclick = (e) => update(e.currentTarget);
   $('btnCompare').onclick = () => startCompare(p.name);
+  $('btnShare').onclick = () => openShareCard(p);
+  bindXpChart(p);
+  renderExtras(p);
+  renderGroup(p);
   if (p.sync) renderQuestSuggestions(p, levels);
   const track = $('btnTrack');
   if (track) track.onclick = () => update(track);

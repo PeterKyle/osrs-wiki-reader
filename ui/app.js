@@ -240,6 +240,7 @@ function renderArticle(res) {
   if (window.checkRequirements) checkRequirements(res.title);
   if (window.showPrice) showPrice(res.title);
   if (window.showCalculator) showCalculator(res.title);
+  if (window.showMyKc) showMyKc(res.title);
   if (window.updateBookmarkBtn) updateBookmarkBtn();
 }
 
@@ -476,6 +477,7 @@ els.search.addEventListener('blur', () => setTimeout(hideSuggest, 120));
 /* ---------------- home ---------------- */
 
 function renderHome() {
+  if (window.renderLatestUpdate) renderLatestUpdate();
   $('quick').innerHTML = QUICK.map(([title, icon]) =>
     `<button class="qcard" data-title="${escapeHtml(title)}"><span class="qi"><img src="${WIKI}/images/${encodeURIComponent(icon)}" alt=""></span><span>${escapeHtml(title)}</span></button>`
   ).join('');

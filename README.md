@@ -53,6 +53,10 @@ The Wise Old Man uses Google's Gemini with **your own free key**. It takes about
 - **Global hotkeys** you can set to any combination: show/hide (Ctrl+Alt+W) and open the Wise Old Man (Ctrl+Alt+Q), even in-game. Ctrl+N starts a new chat.
 - **Works like a normal Windows 11 window**: the Snap Layouts bar when you drag it to the top, edge and corner snapping, Snap Assist, Win+Arrow keys, and maximize (button or double-click the top bar). Plus a **pin** to keep it above the game and a **mini mode** search strip.
 - **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side.
+  - Goals (closest 99s, next level-ups, hours to max), milestones with dates, your best day/week/month/year, and an XP-over-time chart.
+  - Your Group Ironman group, with every member's levels.
+  - **Share**: a picture of your profile to paste into Discord.
+- **Your kill count on boss pages**: open a boss, clue or minigame page and it shows your KC, rank and this week's kills.
 - **Requirement checks**: set your account and quest, diary and guide pages tick off what you meet. The Character tab lists quests you can start now.
 - **XP calculator** on skill pages, with training methods from the wiki.
 - **Ask the Wise Old Man**: an AI helper (Google's Gemini) that answers from the matching wiki pages and your stats, with Ironman, Hardcore, Ultimate, Group and Hardcore Group Ironman modes, and can open wiki pages for you.

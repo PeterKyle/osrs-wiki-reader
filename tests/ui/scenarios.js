@@ -49,6 +49,49 @@ const S = {
     return { tableWidth: wrap.clientWidth, tableScroll: wrap.scrollWidth, cellPad: getComputedStyle(cell).paddingLeft,
       compact: getComputedStyle(cell).paddingLeft === '8px', fadeRight: wrap.classList.contains('more-r'), pageRight: rect(els.scroller).right };
   },
+  // the extra profile sections, with real data for Clyde Lives
+  async profile() {
+    await openCharacter('Clyde Lives'); await wait(1500);
+    const q = (s) => els.char.querySelector(s);
+    return {
+      goals: !!q('.goals .goal-top'), closest99s: els.char.querySelectorAll('.goals h3').length,
+      milestones: els.char.querySelectorAll('.milestones li').length, records: els.char.querySelectorAll('.records > div').length,
+      chartLine: !!q('#xpcBox path.ln'), groupMembers: els.char.querySelectorAll('.gim .row').length,
+      groupMeHighlighted: !!q('.gim .row.me'), shareButton: !!$id('btnShare'),
+    };
+  },
+  async profilegoals() {
+    await openCharacter('Clyde Lives'); await wait(1200);
+    els.char.querySelector('.goals').scrollIntoView(); els.scroller.scrollTop -= 70; await wait(300);
+    return { goals: !!els.char.querySelector('.goals .goal-top') };
+  },
+  async profilegroup() {
+    await openCharacter('Clyde Lives'); await wait(1500);
+    $id('pxGroup').scrollIntoView(); els.scroller.scrollTop -= 420; await wait(300);
+    return { groupMembers: els.char.querySelectorAll('.gim .row').length };
+  },
+  async profilechart() {
+    await openCharacter('Clyde Lives'); await wait(1200);
+    const box = $id('xpcBox'); box.closest('.c-card').scrollIntoView(); await wait(300);
+    return { chartLine: !!box.querySelector('path.ln'), summary: (box.querySelector('.xpc-sum') || {}).textContent || '' };
+  },
+  async share() {
+    await openCharacter('Clyde Lives'); await wait(1200);
+    $id('btnShare').click(); await wait(1500);
+    const img = document.querySelector('#shareModal .share-img');
+    return { modal: visible($id('shareModal')), image: !!img && img.naturalWidth === 1200 && img.naturalHeight === 675 };
+  },
+  async kc() {
+    state.me = 'Clyde Lives';
+    await openPage('Hespori'); await wait(1200);
+    const box = els.article.querySelector('.mykc');
+    return { banner: !!box, text: box ? box.textContent.replace(/\s+/g, ' ').trim() : '' };
+  },
+  async homeupdate() {
+    await wait(1200);
+    const c = document.querySelector('#homeUpdate .upd-name');
+    return { update: c ? c.textContent : null };
+  },
   async char() { await openCharacter('Lynx Titan'); await wait(600); return { name: (els.char.querySelector('h1, h2') || {}).textContent }; },
   async compare() { await openCompare('Lynx Titan', 'Woox'); await wait(600); },
   async quests() { await openCharacter('Lynx Titan'); await wait(400); await scrollTo($id('questSuggest'), 160); },

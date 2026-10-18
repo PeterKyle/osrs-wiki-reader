@@ -69,7 +69,16 @@ const API = {
   // accounts / character
   save_account: async () => state(), set_me: async () => state(), remove_account: async () => state(),
   toggle_bookmark: async () => state(),
-  player: async (n) => clone(String(n).toLowerCase() === 'woox' ? window.__BUDDY : window.__PLAYER),
+  player: async (n) => clone(String(n).toLowerCase() === 'woox' ? window.__BUDDY
+    : String(n).toLowerCase() === 'clyde lives' ? window.__PROFILE.player : window.__PLAYER),
+  player_extras: async () => clone(window.__PROFILE.extras),
+  xp_timeline: async (n, metric, period) => ({ ...clone(window.__PROFILE.timeline), metric, period }),
+  gim_group: async (n) => (String(n).toLowerCase() === 'clyde lives' ? clone(window.__PROFILE.gim) : { needName: true }),
+  set_gim_group: async () => clone(window.__PROFILE.gim),
+  latest_update: async () => clone(window.__PROFILE.update),
+  image_data: async () => ({}),
+  copy_image: async () => ({ ok: true }),
+  save_image: async () => ({ path: 'C:\Users\you\Pictures\OSRS Wiki Reader\card.png' }),
   wom_update: async () => ({ ok: true }),
   training_methods: async () => clone(window.__METHODS),
   quest_requirements: async () => clone(window.__QUESTS),

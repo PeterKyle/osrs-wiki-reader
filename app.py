@@ -9,6 +9,7 @@ import calendar
 import ctypes
 import ctypes.wintypes as wt
 import gzip
+import html
 import hashlib
 import json
 import os
@@ -31,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.4.4"
+VERSION = "1.5.0"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -41,6 +42,10 @@ API = WIKI + "/api.php"
 HISCORES = "https://secure.runescape.com/m=hiscore_oldschool/index_lite.json?player={}"
 WOM = "https://api.wiseoldman.net/v2/players/{}"
 WIKISYNC = "https://sync.runescape.wiki/runelite/player/{}/STANDARD"
+GIM_GROUP = "https://secure.runescape.com/m=hiscore_oldschool_ironman/group-ironman/view-group?name={}"
+SKILL_METRICS = ("attack", "defence", "strength", "hitpoints", "ranged", "prayer", "magic", "cooking", "woodcutting",
+                 "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "herblore", "agility",
+                 "thieving", "slayer", "farming", "runecrafting", "hunter", "construction", "sailing")
 PLAYER_CACHE_SECONDS = 300
 PRICES = "https://prices.runescape.wiki/api/v1/osrs"
 UPDATE_REPO = "PeterKyle/osrs-wiki-reader"  # GitHub releases are checked for newer versions
@@ -395,7 +400,8 @@ DEFAULTS = {
     "zoom": 100,
     "hotkey": "Ctrl+Alt+W",  # display label, or "Off"
     "hotkey_spec": None,     # [modifiers, virtual key]; None = look the label up in HOTKEYS
-    "tour_seen": False,      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
+    "tour_seen": False,
+    "gim_groups": {},        # account name (lower case) -> its Group Ironman group name      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
     "ask_hotkey": "Ctrl+Alt+Q",          # opens the Wise Old Man chat
     "ask_hotkey_spec": [0x0001 | 0x0002, 0x51],
     "recent": [],
@@ -586,9 +592,83 @@ def fetch_wom(name):
         "build": data.get("build"),
         "ehp": data.get("ehp"),
         "ehb": data.get("ehb"),
+        "ttm": data.get("ttm"),        # hours to max, Wise Old Man's estimate
+        "registeredAt": data.get("registeredAt"),
         "updatedAt": data.get("updatedAt"),
         "gains": gains,
     }
+
+
+def http_text(url, timeout=15):
+    """(status, text) for an HTML page. The hiscores pages aren't always UTF-8."""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
+    try:
+        resp = urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.HTTPError as e:
+        resp = e
+    with resp:
+        body = resp.read()
+        if resp.headers.get("Content-Encoding") == "gzip":
+            body = gzip.decompress(body)
+        try:
+            return resp.status, body.decode("utf-8")
+        except UnicodeDecodeError:
+            return resp.status, body.decode("cp1252", errors="replace")
+
+
+def wom_milestones(achievements):
+    """Wise Old Man achievements, newest first. Old ("legacy") ones have no real date."""
+    out = [{"name": a.get("name"), "metric": a.get("metric"), "measure": a.get("measure"),
+            "date": None if a.get("legacy") else a.get("createdAt")}
+           for a in achievements or [] if isinstance(a, dict) and a.get("name")]
+    out.sort(key=lambda a: a["date"] or "", reverse=True)
+    return out[:40]
+
+
+def wom_closest(progress, limit=6):
+    """The not-yet-reached milestones you're closest to."""
+    todo = [x for x in progress or [] if isinstance(x, dict) and not x.get("createdAt") and x.get("threshold")
+            and (x.get("relativeProgress") or 0) > 0]
+    todo.sort(key=lambda x: -(x.get("relativeProgress") or 0))
+    return [{"name": x.get("name"), "metric": x.get("metric"), "measure": x.get("measure"),
+             "current": x.get("currentValue"), "threshold": x.get("threshold"),
+             "progress": round(min(1, x.get("relativeProgress") or 0), 4)} for x in todo[:limit]]
+
+
+def wom_records(records):
+    """Best day / week / month / year: total XP, and the single skill with the most XP gained."""
+    out = {}
+    for period in ("day", "week", "month", "year"):
+        rs = [r for r in records or [] if isinstance(r, dict) and r.get("period") == period]
+        overall = next((r for r in rs if r.get("metric") == "overall"), None)
+        best = max((r for r in rs if r.get("metric") in SKILL_METRICS), key=lambda r: r.get("value") or 0, default=None)
+        out[period] = {
+            "overall": {"value": overall["value"], "date": overall.get("updatedAt")} if overall else None,
+            "skill": {"metric": best["metric"], "value": best["value"], "date": best.get("updatedAt")} if best else None,
+        }
+    return out
+
+
+def parse_gim_group(html_text):
+    """Members of a Group Ironman group from its official hiscores page: name, total level, XP, skill levels."""
+    members = []
+    for row in re.findall(r"uc-scroll__table-row--type-player'>(.*?)</tr>", html_text, re.S):
+        m = re.search(r"class='uc-scroll__link'[^>]*>([^<]+)</a>", row)
+        cells = re.findall(r"<td class='uc-scroll__table-cell'>\s*([\d,]+)\s*</td>", row)
+        if not m or len(cells) < 2:
+            continue
+        name = html.unescape(m.group(1)).replace("\xa0", " ").replace("\ufffd", " ").strip()
+        members.append({"name": name, "total": int(cells[0].replace(",", "")), "xp": int(cells[1].replace(",", "")),
+                        "skills": {}})
+    by_id = {}
+    for mid, skill, level, xp in re.findall(
+            r"data-js-skill-row-memberid='([^']+)'>\s*<td[^>]*>\s*<span class='ua-skill-icon ua-skill-icon--(\w+)'>"
+            r"[^<]*</span>\s*</td>\s*<td[^>]*>([\d,]+)</td>\s*<td[^>]*>([\d,]+)</td>", html_text):
+        key = html.unescape(mid).replace("\xa0", " ").replace("\ufffd", " ").strip().lower()
+        by_id.setdefault(key, {})[skill.lower()] = int(level.replace(",", ""))
+    for mem in members:
+        mem["skills"] = by_id.get(mem["name"].lower(), {})
+    return members
 
 
 def fetch_account_type(name):
@@ -631,6 +711,7 @@ class Api:
         self._lock = threading.Lock()
         self._mem_lock = threading.Lock()   # guards the in-memory caches (pywebview runs API calls on parallel threads)
         self._chats_lock = threading.Lock()
+        self._extras, self._gim, self._img, self._update = {}, {}, {}, None
         self._notifier = None
         self._mini = False
         self._full_rect = None
@@ -1509,6 +1590,192 @@ class Api:
     def _answer_mode(self):
         mode = self._cfg.get("ask_mode") or "auto"
         return (self._my_account_type() or "regular") if mode == "auto" else mode
+
+    # ---- profile extras: Wise Old Man milestones, records, closest goals; XP history; GIM group ----
+    def player_extras(self, name):
+        """Milestones (with dates), best day/week/month/year, and the milestones you're closest to."""
+        name = (name or "").strip()[:12]
+        if not name:
+            return {"error": "No name."}
+        key = name.lower()
+        with self._mem_lock:
+            hit = self._extras.get(key)
+        if hit and time.time() - hit[0] < 600:
+            return hit[1]
+        base = WOM.format(rsn_url(name))
+        jobs = {k: self._pool.submit(http_json, base + path) for k, path in
+                (("ach", "/achievements"), ("prog", "/achievements/progress"), ("rec", "/records"))}
+        got = {}
+        for k, job in jobs.items():
+            try:
+                status, data = job.result()
+                got[k] = data if status == 200 else None
+            except Exception:
+                got[k] = None
+        if not any(got.values()):
+            return {"error": "Wise Old Man isn't tracking this account yet, so there are no milestones or records."}
+        result = {"milestones": wom_milestones(got["ach"]), "closest": wom_closest(got["prog"]),
+                  "records": wom_records(got["rec"])}
+        with self._mem_lock:
+            self._extras[key] = (time.time(), result)
+            if len(self._extras) > 20:
+                self._extras.pop(min(self._extras, key=lambda k: self._extras[k][0]), None)
+        return result
+
+    def xp_timeline(self, name, metric="overall", period="month"):
+        """XP over time from Wise Old Man's snapshots, oldest first: [{t, v}]."""
+        metric = metric if metric in SKILL_METRICS or metric == "overall" else "overall"
+        period = period if period in ("week", "month", "year") else "month"
+        try:
+            data = self._get_timed(WOM.format(rsn_url((name or "").strip()[:12])) +
+                                   f"/snapshots/timeline?metric={metric}&period={period}", 600)
+        except Exception:
+            return {"error": "Couldn't load the XP history from Wise Old Man."}
+        points = [{"t": p.get("date"), "v": p.get("value")} for p in data if isinstance(p, dict) and p.get("value", -1) >= 0]
+        return {"metric": metric, "period": period, "points": points[::-1]}
+
+    def _fetch_gim(self, group):
+        key = group.lower()
+        with self._mem_lock:
+            hit = self._gim.get(key)
+        if hit and time.time() - hit[0] < 600:
+            return hit[1]
+        status, text = http_text(GIM_GROUP.format(urllib.parse.quote(group)))
+        if status != 200:
+            raise IOError(f"hiscores returned HTTP {status}")
+        members = parse_gim_group(text)
+        with self._mem_lock:
+            self._gim[key] = (time.time(), members)
+            if len(self._gim) > 10:
+                self._gim.pop(min(self._gim, key=lambda k: self._gim[k][0]), None)
+        return members
+
+    def gim_group(self, rsn):
+        """The account's Group Ironman group (name saved once per account), with every member's levels."""
+        group = (self._cfg.get("gim_groups") or {}).get((rsn or "").strip().lower())
+        if not group:
+            return {"needName": True}
+        try:
+            members = self._fetch_gim(group)
+        except Exception as e:
+            return {"group": group, "error": f"Couldn't reach the Group Ironman hiscores ({e.__class__.__name__})."}
+        return {"group": group, "members": members}
+
+    def set_gim_group(self, rsn, group):
+        rsn, group = (rsn or "").strip()[:12], re.sub(r"\s+", " ", (group or "").strip())[:12]
+        groups = dict(self._cfg.get("gim_groups") or {})
+        if not group:   # forget it
+            groups.pop(rsn.lower(), None)
+            self._cfg["gim_groups"] = groups
+            save_config(self._cfg)
+            return {"needName": True}
+        try:
+            members = self._fetch_gim(group)
+        except Exception as e:
+            return {"needName": True, "error": f"Couldn't reach the Group Ironman hiscores ({e.__class__.__name__})."}
+        if not members:
+            return {"needName": True, "error": f"There's no group called “{group}” on the Group Ironman hiscores."}
+        groups[rsn.lower()] = group
+        self._cfg["gim_groups"] = groups
+        save_config(self._cfg)
+        return {"group": group, "members": members}
+
+    # ---- home: the newest game update from the wiki ----
+    def latest_update(self):
+        if self._update and time.time() - self._update[0] < 3600:
+            return self._update[1]
+        try:
+            q = api_get(action="query", list="categorymembers", cmtitle="Category:Game updates",
+                        cmsort="timestamp", cmdir="desc", cmlimit=1)
+            title = q["query"]["categorymembers"][0]["title"]
+            p = api_get(action="query", titles=title, prop="extracts|revisions", exintro=1, explaintext=1,
+                        exchars=400, rvprop="content", rvslots="main")["query"]["pages"][0]
+            content = p["revisions"][0]["slots"]["main"]["content"]
+            date = re.search(r"\|\s*date\s*=\s*([^\n|}]+)", content)
+            summary = re.sub(r"\s+", " ", p.get("extract") or "").strip()
+            result = {"title": title, "name": title.split(":", 1)[-1], "date": date.group(1).strip() if date else None,
+                      "summary": summary}
+        except Exception:
+            return None
+        self._update = (time.time(), result)
+        return result
+
+    # ---- share card: wiki images as data URLs (so the card can be copied), saving the picture ----
+    def image_data(self, urls):
+        out = {}
+        for url in (urls or [])[:40]:
+            if not isinstance(url, str) or not url.startswith("https://oldschool.runescape.wiki/images/"):
+                continue
+            with self._mem_lock:
+                hit = self._img.get(url)
+            if hit is None:
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+                    with urllib.request.urlopen(req, timeout=10) as r:
+                        kind = r.headers.get_content_type() or "image/png"
+                        hit = f"data:{kind};base64," + base64.b64encode(r.read(200_000)).decode()
+                except Exception:
+                    continue
+                with self._mem_lock:
+                    self._img[url] = hit
+            out[url] = hit
+        return out
+
+    def save_image(self, data_url, name):
+        """Saves the share card to Pictures\\OSRS Wiki Reader and shows it in Explorer."""
+        try:
+            raw = base64.b64decode(data_url.split(",", 1)[1])
+            if not raw.startswith(b"\x89PNG"):
+                return {"error": "That isn't a PNG image."}
+            folder = os.path.join(os.path.expanduser("~"), "Pictures", "OSRS Wiki Reader")
+            os.makedirs(folder, exist_ok=True)
+            safe = re.sub(r"[^\w -]", "", str(name))[:20].strip() or "profile"
+            path = os.path.join(folder, f"{safe} {time.strftime('%Y-%m-%d %H%M')}.png")
+            with open(path, "wb") as f:
+                f.write(raw)
+            subprocess.Popen(["explorer", "/select,", path])
+            return {"path": path}
+        except Exception as e:
+            return {"error": f"Couldn't save the picture ({e.__class__.__name__})."}
+
+    def copy_image(self, dib_b64, png_data_url):
+        """Puts the share card on the clipboard as a bitmap (CF_DIB, works everywhere) and as PNG (keeps quality
+        in Discord, browsers and editors)."""
+        try:
+            dib = base64.b64decode(dib_b64)
+            png = base64.b64decode(png_data_url.split(",", 1)[1])
+            k32, u32c = ctypes.WinDLL("kernel32"), ctypes.WinDLL("user32")
+            k32.GlobalAlloc.restype = ctypes.c_void_p
+            k32.GlobalAlloc.argtypes = [wt.UINT, ctypes.c_size_t]
+            k32.GlobalLock.restype = ctypes.c_void_p
+            k32.GlobalLock.argtypes = [ctypes.c_void_p]
+            k32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+            u32c.SetClipboardData.argtypes = [wt.UINT, ctypes.c_void_p]
+            u32c.SetClipboardData.restype = ctypes.c_void_p
+            u32c.RegisterClipboardFormatW.restype = wt.UINT
+
+            def put(fmt, data):
+                h = k32.GlobalAlloc(0x0002, len(data))   # GMEM_MOVEABLE
+                ptr = k32.GlobalLock(h)
+                ctypes.memmove(ptr, data, len(data))
+                k32.GlobalUnlock(h)
+                u32c.SetClipboardData(fmt, h)   # the clipboard owns the memory now
+
+            for _ in range(10):   # another app may be holding the clipboard for a moment
+                if u32c.OpenClipboard(None):
+                    break
+                time.sleep(0.05)
+            else:
+                return {"error": "The clipboard is busy. Try again."}
+            try:
+                u32c.EmptyClipboard()
+                put(8, dib)                                   # CF_DIB
+                put(u32c.RegisterClipboardFormatW("PNG"), png)
+            finally:
+                u32c.CloseClipboard()
+            return {"ok": True}
+        except Exception as e:
+            return {"error": f"Couldn't copy the picture ({e.__class__.__name__})."}
 
     # ---- Wise Old Man chat history (last MAX_CHATS conversations) ----
     def _read_chats(self):
