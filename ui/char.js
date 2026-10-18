@@ -152,7 +152,8 @@ function renderPlayer(p) {
   const wom = p.wom;
   const gains = wom && wom.gains;
   const isMe = state.me && state.me.toLowerCase() === p.name.toLowerCase();
-  const type = wom && ACCOUNT_TYPES[wom.type];
+  const acctType = p.accountType || (wom && wom.type);
+  const type = ACCOUNT_TYPES[acctType];
 
   const statBits = [
     ['Combat', combatLevel(levels)],
@@ -186,7 +187,7 @@ function renderPlayer(p) {
   <div class="c-card c-head">
     <div class="c-title">
       <h1>${escapeHtml(p.name)}</h1>
-      ${type ? `<span class="badge t-${wom.type}">${type}</span>` : ''}
+      ${type ? `<span class="badge t-${acctType}">${type}</span>` : ''}
       <span class="spacer"></span>
       <button class="cbtn${isMe ? ' on' : ''}" id="btnMe" title="${isMe ? 'This is your account' : 'Use this account for quest requirement checks'}">${svgIcon('i-star')}<span>${isMe ? 'My account' : 'This is me'}</span></button>
       <button class="cbtn" id="btnCompare" title="Compare with another saved account">${svgIcon('i-user')}<span>Compare</span></button>

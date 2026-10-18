@@ -363,6 +363,16 @@ select { height: 32px; padding: 0 10px; font-size: var(--fs-sm); }
 .ask-btn.on { background: var(--accent-soft); }
 .ask-title { flex: 1; margin-left: 6px; font: 600 14px/1.25 var(--font-display); letter-spacing: -.01em; color: var(--text); display: flex; flex-direction: column; }
 .ask-title span { font: 400 var(--fs-cap) var(--font); letter-spacing: 0; color: var(--text-3); margin-top: 1px; }
+.ask-mode { position: relative; margin-right: 4px; display: inline-flex; }
+.ask-mode::after {   /* chevron */
+  content: ""; position: absolute; right: 11px; top: 50%; width: 5px; height: 5px; margin-top: -4px; pointer-events: none;
+  border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3); transform: rotate(45deg);
+}
+.ask-mode select {
+  height: 28px; padding: 0 26px 0 11px; font-size: 12px; font-weight: 500; border-radius: var(--r-full);
+  appearance: none; -webkit-appearance: none; cursor: pointer; max-width: 170px;
+}
+.ask-mode select.iron { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-ring); }
 .ask-body { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .msg { max-width: 90%; padding: 10px 14px; border-radius: var(--r-lg); font-size: var(--fs-ui); line-height: 1.55; }
 .msg.me {

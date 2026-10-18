@@ -56,6 +56,27 @@ GEMINI_SYSTEM = (
     "OPEN: Exact page title#Section heading (leave out #Section if they didn't ask for a part of the page). "
     "Use real OSRS Wiki page titles, e.g. OPEN: Dragon Slayer II#Walkthrough. Never add an OPEN line otherwise."
 )
+ACCOUNT_RULES = {
+    "ironman": (
+        "The player is an IRONMAN. Ironmen cannot use the Grand Exchange, cannot trade other players, and cannot take "
+        "other players' drops or loot; they must obtain every item themselves. Never suggest buying from the Grand "
+        "Exchange or other players. Instead explain how to get items themselves (monster drops, skilling, NPC shops, "
+        "minigames, quests), and prefer self-sufficient methods. For money making, focus on what is useful to an "
+        "ironman (gathering their own supplies, NPC shop runs, high alchemy) rather than GP from selling. Mention "
+        "ironman-specific notes from the wiki when relevant."),
+    "hardcore": (
+        "The player is a HARDCORE IRONMAN: all Ironman restrictions apply (no Grand Exchange, no trading, obtain "
+        "everything themselves), and they lose hardcore status if they die in a dangerous area. Point out risky "
+        "content, prefer safer methods and setups, and suggest precautions (escape items, safe spots)."),
+    "ultimate": (
+        "The player is an ULTIMATE IRONMAN: all Ironman restrictions apply (no Grand Exchange, no trading, obtain "
+        "everything themselves), and they also cannot use a bank at all and keep no items on death. Suggest methods "
+        "and setups that work from the inventory, looting bag and other storage they can use, and avoid plans that "
+        "need banking."),
+}
+ACCOUNT_LABELS = {"regular": "main account", "ironman": "Ironman", "hardcore": "Hardcore Ironman",
+                  "ultimate": "Ultimate Ironman"}
+
 STOPWORDS = set(
     "a an the is are was were be been do does did i im i'm me my mine you your we our to of in on at for from with by "
     "and or but how what whats what's where when which who why can could should would will get got go going best good "
@@ -119,6 +140,7 @@ DEFAULTS = {
     "ask_limit": 300,     # max questions per day sent to Gemini (0 = no limit); a safety net on top of Google's free tier
     "gemini_skip": {},    # model -> epoch time its free quota frees up again
     "ask_used": [None, 0],  # [date, questions asked that day]
+    "ask_mode": "auto",     # answer as: auto (from "my account") | regular | ironman | hardcore | ultimate
 }
 
 user32 = ctypes.windll.user32
@@ -244,6 +266,17 @@ def fetch_wom(name):
     }
 
 
+def fetch_account_type(name):
+    """'ultimate' | 'hardcore' | 'ironman' | 'regular', from which official hiscores list the player.
+    (An ultimate is also on the ironman board, so check the most specific first.)"""
+    for board, kind in (("hiscore_oldschool_ultimate", "ultimate"), ("hiscore_oldschool_hardcore_ironman", "hardcore"),
+                        ("hiscore_oldschool_ironman", "ironman")):
+        status, _ = http_json(f"https://secure.runescape.com/m={board}/index_lite.json?player={rsn_url(name)}")
+        if status == 200:
+            return kind
+    return "regular"
+
+
 def fetch_wikisync(name):
     status, data = http_json(WIKISYNC.format(rsn_url(name)))
     if status != 200 or not data or "quests" not in data:
@@ -348,7 +381,14 @@ class Api:
         if hiscores is None:
             return {"error": f"“{name}” isn't on the OSRS hiscores. Check the spelling, or the account may be too new to be ranked."}
 
+        account_type = (wom_data or {}).get("type")
+        if account_type not in ("regular", "ironman", "hardcore", "ultimate"):
+            try:
+                account_type = fetch_account_type(name)
+            except Exception:
+                account_type = None
         result = {
+            "accountType": account_type,
             "name": (wom_data or {}).get("displayName") or hiscores["name"] or name,
             "skills": hiscores["skills"],
             "activities": hiscores["activities"],
@@ -948,7 +988,14 @@ class Api:
             pages = []
         context = "\n\n".join(f"=== OSRS Wiki page: {p['title']} ===\n{p['text']}" for p in pages)
         player = self._player_summary()
+        mode = self._answer_mode()
         system = GEMINI_SYSTEM + (f"\n\nThe player asking: {player}" if player else "")
+        if mode in ACCOUNT_RULES:
+            system += "\n\n" + ACCOUNT_RULES[mode]
+        if (self._cfg.get("ask_mode") or "auto") != "auto":
+            system += ("\n\nThe player chose to get advice as a " + ACCOUNT_LABELS.get(mode, mode) +
+                       ", so answer for that account type even if the stats above say otherwise."
+                       + (" Normal advice is fine, including the Grand Exchange." if mode == "regular" else ""))
 
         # Only the last 2 exchanges, with older answers shortened: enough for follow-ups, without resending the
         # whole chat every time. (Free quota counts requests, not size, but smaller requests answer faster.)
@@ -1014,7 +1061,7 @@ class Api:
             self._gemini_model = model.split("/")[-1]
             text, open_page = self._take_open_command(text)
             return {"answer": text, "sources": [p["title"] for p in pages], "model": self._gemini_model,
-                    "open": open_page}
+                    "open": open_page, "mode": mode}
         if offline:
             return {"error": f"Couldn't reach Google ({offline}). Check your connection."}
         if busy and not limited:
@@ -1136,6 +1183,29 @@ class Api:
             return f"{seconds // 60 + 1} min"
         return f"{seconds // 3600}h {seconds % 3600 // 60}m"
 
+    def _my_account_type(self):
+        me = self._cfg.get("me")
+        if not me:
+            return None
+        p = self.player(me)  # cached for a few minutes
+        return None if "error" in p else p.get("accountType")
+
+    def _answer_mode(self):
+        mode = self._cfg.get("ask_mode") or "auto"
+        return (self._my_account_type() or "regular") if mode == "auto" else mode
+
+    def ask_mode_info(self):
+        """For the chat's "playing as" picker: the saved choice and what Auto resolves to."""
+        detected = self._my_account_type()
+        return {"mode": self._cfg.get("ask_mode") or "auto", "detected": detected,
+                "detectedLabel": ACCOUNT_LABELS.get(detected or "", ""), "me": self._cfg.get("me")}
+
+    def set_ask_mode(self, mode):
+        if mode in ("auto", "regular", "ironman", "hardcore", "ultimate"):
+            self._cfg["ask_mode"] = mode
+            save_config(self._cfg)
+        return self.ask_mode_info()
+
     def _player_summary(self):
         me = self._cfg.get("me")
         if not me:
@@ -1144,7 +1214,10 @@ class Api:
         if "error" in p:
             return ""
         levels = ", ".join(f"{s['name']} {s['level']}" for s in p["skills"] if s["name"] != "Overall" and s["xp"] >= 0)
-        text = f"{p['name']}. Levels: {levels}."
+        text = f"{p['name']}"
+        if p.get("accountType") in ACCOUNT_LABELS:
+            text += f" (account type on the hiscores: {ACCOUNT_LABELS[p['accountType']]})"
+        text += f". Levels: {levels}."
         if p.get("sync"):
             done = [q for q, v in p["sync"]["quests"].items() if v == 2]
             text += f" Quests completed ({len(done)}): {', '.join(sorted(done))[:3000]}."

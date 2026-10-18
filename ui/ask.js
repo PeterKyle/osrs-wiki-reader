@@ -85,7 +85,7 @@ function showSetup(error) {
 
 function welcomeHtml() {
   const examples = ['How do I get a fire cape?', 'What should I train next for quests?', 'Best money making at my levels?', 'Open the Dragon Slayer II walkthrough'];
-  return `<div class="ask-welcome"><p>Greetings, adventurer! Ask me anything about Old School RuneScape. I'll check the wiki before I answer.${state.me ? ` I'll keep <b>${escapeHtml(state.me)}</b>'s levels in mind.` : ''}</p>
+  return `<div class="ask-welcome"><p>Greetings, adventurer! Ask me anything about Old School RuneScape. I'll check the wiki before I answer.${state.me ? ` I'll keep <b>${escapeHtml(state.me)}</b>'s levels in mind.` : ''} <span id="askModeNote">${modeNote()}</span></p>
     <div class="ask-ex">${examples.map((x) => `<button class="chip" data-q="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join('')}</div></div>`;
 }
 
@@ -173,10 +173,42 @@ function autoGrow() {
   chat.input.style.height = Math.min(chat.input.scrollHeight, 120) + 'px';
 }
 
+/* "Playing as": Auto (from the account set as "This is me") or a fixed account type */
+const MODE_SHORT = { regular: 'Main', ironman: 'Ironman', hardcore: 'Hardcore', ultimate: 'Ultimate' };
+const MODE_NOTES = {
+  ironman: 'Advice is for an <b>Ironman</b>: no Grand Exchange or trading.',
+  hardcore: 'Advice is for a <b>Hardcore Ironman</b>: no Grand Exchange or trading, and I’ll warn you about risky content.',
+  ultimate: 'Advice is for an <b>Ultimate Ironman</b>: no Grand Exchange, trading or bank.',
+};
+chat.mode = 'regular';
+function modeNote() { return MODE_NOTES[chat.mode] || ''; }
+
+async function refreshMode() {
+  const info = await api.ask_mode_info();
+  const sel = $('askMode');
+  sel.querySelector('option[value="auto"]').textContent = info.me ? `Auto · ${MODE_SHORT[info.detected] || 'Main'}` : 'Auto';
+  sel.value = info.mode;
+  chat.mode = info.mode === 'auto' ? (info.detected || 'regular') : info.mode;
+  sel.classList.toggle('iron', chat.mode !== 'regular');
+  sel.title = info.mode === 'auto'
+    ? (info.me ? `Auto: uses ${info.me}'s account type from the hiscores (${MODE_SHORT[info.detected] || 'Main'})`
+               : 'Auto: set your account in the Character tab ("This is me") to detect Ironman')
+    : `Answering as: ${MODE_SHORT[info.mode]}`;
+  const note = $('askModeNote');
+  if (note) note.innerHTML = modeNote();
+}
+$('askMode').onchange = async (e) => {
+  await api.set_ask_mode(e.target.value);
+  await refreshMode();
+  toast(chat.mode === 'regular' ? 'The Wise Old Man will give normal (main account) advice.'
+    : `The Wise Old Man will answer as if you're ${chat.mode === 'ultimate' ? 'an Ultimate' : chat.mode === 'hardcore' ? 'a Hardcore' : 'an'} Ironman.`);
+};
+
 async function openAsk() {
   closePops();
   chat.pop.hidden = false;
   $('btnAsk').classList.add('on');
+  refreshMode();   // may look up your account type; doesn't hold up the chat
   const st = await api.gemini_status();
   if (!st.hasKey) showSetup(); else showChat();
 }
