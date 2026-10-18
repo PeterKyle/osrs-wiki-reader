@@ -122,6 +122,7 @@ function show(which) {
   if (window.trackMru) trackMru();   // Ctrl+Tab's recent list (switcher.js)
   if (window.updateBookmarkBtn) updateBookmarkBtn();
   if (window.renderCtx) renderCtx();   // keep the chat's "current page" chip in step with what's on screen
+  if (window.updateDock) updateDock();   // the Ask box at the bottom shows on wiki pages
 }
 
 function goHome(push = true) {

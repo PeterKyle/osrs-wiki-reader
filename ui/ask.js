@@ -398,10 +398,15 @@ function updateDock() {
     document.documentElement.style.setProperty('--ask-w', w + 'px');
   }
   document.body.classList.toggle('ask-docked', docked);
-  // too narrow to share: the chat becomes a bar at the bottom (closed) or a sheet from the bottom (open)
+  // too narrow to share: the chat opens as a sheet from the bottom
   const narrow = !docked && !isMini() && window.innerWidth < DOCK.minW + DOCK.minPage;
   document.body.classList.toggle('ask-narrow', narrow);
-  askBar.hidden = !narrow || !chat.pop.hidden;
+  // while the chat is closed, an Ask box waits at the bottom of wiki pages (of every view, in a small window);
+  // asking there opens the chat: beside the page when there's room, as a sheet when there isn't
+  askBar.hidden = isMini() || !chat.pop.hidden || !(narrow || !els.article.hidden);
+  document.body.classList.toggle('ask-bar-on', !askBar.hidden);
+  const page = !els.article.hidden && nav.stack[nav.idx] && nav.stack[nav.idx].title;   // he's given the page you're on
+  askBarInput.placeholder = page ? `Ask about ${page}…` : 'Ask the Wise Old Man…';
 }
 const askBar = $('askBar');
 const askBarInput = $('askBarInput');

@@ -71,7 +71,7 @@ The Wise Old Man uses Google's Gemini with **your own free key**. It takes about
 - **XP calculator** on skill pages, with training methods from the wiki.
 - **Ask the Wise Old Man**: an AI helper (Google's Gemini) that answers from the matching wiki pages and your stats, with Ironman, Hardcore, Ultimate, Group and Hardcore Group Ironman modes, and can open wiki pages for you.
   - Like a code editor, he sees the page you're reading and any text you highlight (or press **Ask about this**).
-  - The chat docks beside the page instead of covering it; drag its edge to resize. In a small window it waits as an "Ask the Wise Old Man…" bar at the bottom and opens as a sheet when you ask; tap the page (or Esc) to fold it away.
+  - The chat docks beside the page instead of covering it; drag its edge to resize. While it's closed, an "Ask about <page>…" box waits at the bottom of every wiki page: type there and the chat opens beside the page (or, in a small window, as a sheet from the bottom; tap the page or press Esc to fold it away).
   - Your last 10 chats are saved, so you can pick one up again later.
   - Free: you connect your own free Gemini key from [Google AI Studio](https://aistudio.google.com/apikey), with no billing needed.
 - **Light on your PC**: when hidden it puts the page to sleep and frees memory, and wakes instantly.

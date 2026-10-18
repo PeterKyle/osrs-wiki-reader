@@ -394,14 +394,19 @@ const S = {
     document.head.append(still);
     await openPage('Abyssal whip'); await wait(400);
     const bar = $id('askBar');
-    const before = { bar: visible(bar), pop: visible(chat.pop), narrow: document.body.classList.contains('ask-narrow') };
+    const before = { bar: visible(bar), pop: visible(chat.pop), narrow: document.body.classList.contains('ask-narrow'), placeholder: $id('askBarInput').placeholder };
     $id('askBarInput').value = 'How do I get a fire cape?';
     bar.requestSubmit(); await wait(700);
     const r = chat.pop.getBoundingClientRect();
     const open = { bar: visible(bar), pop: visible(chat.pop), msgs: msgCount(), atBottom: Math.abs(r.bottom - innerHeight) <= 1 && r.left <= 1 && Math.abs(r.right - innerWidth) <= 1,
       emptied: $id('askBarInput').value === '' };
+    open.docked = document.body.classList.contains('ask-docked');
     if (QS.get('fold')) { els.scroller.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await wait(300); }
-    return { before, open, folded: { bar: visible(bar), pop: visible(chat.pop) } };
+    const folded = { bar: visible(bar), pop: visible(chat.pop) };
+    closeAsk(); await wait(100);
+    const closed = visible(bar);
+    goHome(); await wait(300);
+    return { before, open, folded, closedOnPage: closed, onHome: visible(bar) };
   },
   async hist() {   // two questions, Ctrl+N, a third question, then the history menu (?menu=1) or load the older chat (?load=1)
     await openPage('Abyssal whip'); await wait(400); await openChat();
