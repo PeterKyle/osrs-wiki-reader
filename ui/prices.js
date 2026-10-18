@@ -145,7 +145,12 @@ window.showPrice = async function (pageTitle) {
     $('geRange').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
     load();
   };
-  new ResizeObserver(() => series.length && drawChart(chart, series, range)).observe(chart);
+  // redraw on resize; stop watching once the page (and this chart) has been navigated away from
+  const ro = new ResizeObserver(() => {
+    if (!chart.isConnected) { ro.disconnect(); return; }
+    if (series.length) drawChart(chart, series, range);
+  });
+  ro.observe(chart);
   load();
 };
 

@@ -5,6 +5,7 @@ Unofficial fan project. Article content comes from https://oldschool.runescape.w
 """
 
 import base64
+import calendar
 import ctypes
 import ctypes.wintypes as wt
 import gzip
@@ -92,6 +93,18 @@ STOPWORDS = set(
     "way ways need needed it its it's this that these those there here any some much many more most than then so if "
     "into about as up out lvl please tell explain ok okay thanks thank next instead also else then just really "
     "now there's".split())
+def pacific_offset(now):
+    """Hours US Pacific time is behind UTC at epoch `now` (daylight saving: 2nd Sunday of March, 2 am, to the
+    1st Sunday of November, 2 am)."""
+    year = time.gmtime(now).tm_year
+
+    def sunday(month, nth):  # epoch of the nth Sunday of the month, 00:00 UTC
+        first = calendar.timegm((year, month, 1, 0, 0, 0))
+        return first + ((6 - time.gmtime(first).tm_wday) % 7 + 7 * (nth - 1)) * 86400
+
+    return 7 if sunday(3, 2) + 10 * 3600 <= now < sunday(11, 1) + 9 * 3600 else 8
+
+
 def nice_model(name):
     """'models/gemini-3.5-flash-lite' -> '3.5 Flash-Lite'"""
     m = re.search(r"gemini-([\d.]+)-flash(-lite)?", name)
@@ -276,12 +289,12 @@ def fetch_wom(name):
 def fetch_account_type(name):
     """'ultimate' | 'hardcore' | 'ironman' | 'regular', from which official hiscores list the player.
     (An ultimate is also on the ironman board, so check the most specific first.)"""
-    for board, kind in (("hiscore_oldschool_ultimate", "ultimate"), ("hiscore_oldschool_hardcore_ironman", "hardcore"),
-                        ("hiscore_oldschool_ironman", "ironman")):
-        status, _ = http_json(f"https://secure.runescape.com/m={board}/index_lite.json?player={rsn_url(name)}")
-        if status == 200:
-            return kind
-    return "regular"
+    boards = (("hiscore_oldschool_ultimate", "ultimate"), ("hiscore_oldschool_hardcore_ironman", "hardcore"),
+              ("hiscore_oldschool_ironman", "ironman"))
+    url = "https://secure.runescape.com/m={}/index_lite.json?player=" + rsn_url(name)
+    with ThreadPoolExecutor(max_workers=len(boards)) as ex:   # look up all three boards at once
+        listed = list(ex.map(lambda b: http_json(url.format(b[0]))[0] == 200, boards))
+    return next((kind for (_, kind), on in zip(boards, listed) if on), "regular")
 
 
 def fetch_wikisync(name):
@@ -311,6 +324,7 @@ class Api:
         self._mapping = None  # GE items: lowercase name -> item, plus "_by_id"
         self._timed = {}      # url -> (fetched_at, data) for short-lived price data
         self._lock = threading.Lock()
+        self._mem_lock = threading.Lock()   # guards the in-memory caches (pywebview runs API calls on parallel threads)
         self._notifier = None
         self._mini = False
         self._full_rect = None
@@ -332,9 +346,13 @@ class Api:
 
     def page(self, title):
         key = title.replace("_", " ").strip()
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            return self._cache[key]
+        with self._mem_lock:
+            hit = self._cache.get(key)
+            if hit:
+                self._cache.move_to_end(key)
+        if hit:
+            self._remember(hit["title"])
+            return hit
         try:
             data = api_get(action="parse", page=key, prop="text|displaytitle", redirects=1,
                            disableeditsection=1, disabletoc=1)
@@ -343,11 +361,17 @@ class Api:
         if "error" in data:
             return {"error": data["error"].get("info", "Page not found.")}
         result = {"title": data["parse"]["title"], "html": data["parse"]["text"]}
-        self._cache[key] = result
-        if len(self._cache) > 60:
-            self._cache.popitem(last=False)
+        self._cache_put(key, result)
         self._remember(result["title"])
         return result
+
+    def _cache_put(self, key, value):
+        """Pages and chat extracts share one bounded LRU cache (oldest entries dropped)."""
+        with self._mem_lock:
+            self._cache[key] = value
+            self._cache.move_to_end(key)
+            while len(self._cache) > 80:
+                self._cache.popitem(last=False)
 
     def random(self):
         try:
@@ -402,7 +426,11 @@ class Api:
             "sync": sync_data,
             "fetchedAt": int(time.time()),
         }
-        self._players[key] = (time.time(), result)
+        with self._mem_lock:
+            self._players[key] = (time.time(), result)
+            if len(self._players) > 20:   # keep only recent lookups
+                oldest = min(self._players, key=lambda k: self._players[k][0])
+                self._players.pop(oldest, None)
         return result
 
     def wom_update(self, name):
@@ -442,13 +470,19 @@ class Api:
 
     # ---- Grand Exchange prices (prices.runescape.wiki) ----
     def _get_timed(self, url, max_age):
-        hit = self._timed.get(url)
+        with self._mem_lock:
+            hit = self._timed.get(url)
         if hit and time.time() - hit[0] < max_age:
             return hit[1]
         status, data = http_json(url)
         if status != 200 or data is None:
             raise IOError(f"prices API returned HTTP {status}")
-        self._timed[url] = (time.time(), data)
+        now = time.time()
+        with self._mem_lock:
+            # nothing here is used after 10 minutes, so drop stale entries instead of keeping every item ever viewed
+            for k in [k for k, (t, _) in self._timed.items() if now - t > 600]:
+                self._timed.pop(k, None)
+            self._timed[url] = (now, data)
         return data
 
     def _items(self):
@@ -774,24 +808,33 @@ class Api:
             return None
 
     @staticmethod
-    def _gemini_call(path, key, auth, body=None, timeout=15):
-        """Gemini REST call. Newer AI Studio keys ("AQ.") aren't accepted the same way everywhere, so the key
-        can go in the documented x-goog-api-key header, the ?key= parameter, or as a Bearer token."""
-        url, headers = GEMINI + path, {}
+    def _gemini_auth(url, key, auth):
+        """Newer AI Studio keys ("AQ.") aren't accepted the same way everywhere, so the key can go in the
+        documented x-goog-api-key header, the ?key= parameter, or as a Bearer token. Returns (url, headers)."""
+        headers = {}
         if auth == "query":
             url += ("&" if "?" in url else "?") + "key=" + urllib.parse.quote(key)
         elif auth == "bearer":
             headers["Authorization"] = "Bearer " + key
         else:
             headers["x-goog-api-key"] = key
+        return url, headers
+
+    @staticmethod
+    def _gemini_call(path, key, auth, body=None, timeout=15):
+        """Gemini REST call."""
+        url, headers = Api._gemini_auth(GEMINI + path, key, auth)
         return http_json(url, method="POST" if body is not None else "GET", body=body, headers=headers, timeout=timeout)
 
     def _gemini_models(self, key, auth=None):
-        """Stable Gemini Flash models this key can use, best first (names change often, so ask Google)."""
+        """Stable Gemini Flash models this key can use, best first (names change often, so ask Google).
+        Raises PermissionError if Google rejects the key, ConnectionError for other failures (busy, rate limited)."""
         status, data = self._gemini_call("/models?pageSize=200", key, auth or self._cfg.get("gemini_auth"))
         if status != 200 or not isinstance(data, dict):
             msg = ((data or {}).get("error") or {}).get("message", "") if isinstance(data, dict) else ""
-            raise PermissionError(msg or f"HTTP {status}")
+            if status in (400, 401, 403, 404):
+                raise PermissionError(msg or f"HTTP {status}")
+            raise ConnectionError(msg or f"HTTP {status}")
         found = []
         for m in data.get("models", []):
             hit = re.fullmatch(r"models/gemini-(\d+(?:\.\d+)?)-flash(-lite)?", m.get("name", ""))
@@ -831,13 +874,17 @@ class Api:
             self._gemini_list = models
             self._cfg["gemini_key"] = protect_secret(key)
             self._cfg["gemini_auth"] = auth
+            self._cfg["gemini_skip"] = {}   # used-up / unavailable models were for the old key
+            self._gemini_model = None
             save_config(self._cfg)
             return {"ok": True}
         return {"error": f"Google didn't accept that key: {first_error}"}
 
     def gemini_clear_key(self):
         self._cfg["gemini_key"] = None
+        self._cfg["gemini_skip"] = {}
         self._gemini_list = None
+        self._gemini_model = None
         save_config(self._cfg)
         return {"ok": True}
 
@@ -884,11 +931,15 @@ class Api:
 
     def _page_text(self, title):
         key = "x:" + title
-        if key not in self._cache:
-            q = api_get(action="query", prop="extracts", explaintext=1, exsectionformat="plain", titles=title, redirects=1)
-            p = (q.get("query", {}).get("pages") or [{}])[0]
-            self._cache[key] = {"title": p.get("title", title), "text": (p.get("extract") or "")[:6000]}
-        return self._cache[key]
+        with self._mem_lock:
+            hit = self._cache.get(key)
+        if hit:
+            return hit
+        q = api_get(action="query", prop="extracts", explaintext=1, exsectionformat="plain", titles=title, redirects=1)
+        p = (q.get("query", {}).get("pages") or [{}])[0]
+        value = {"title": p.get("title", title), "text": (p.get("extract") or "")[:6000]}
+        self._cache_put(key, value)
+        return value
 
     def ask(self, question, history=None):
         question = (question or "").strip()[:1000]
@@ -943,11 +994,11 @@ class Api:
             self._gemini_list = models
         except PermissionError as e:
             return {"error": f"Google rejected your key ({e}). You can add a new one from the chat menu.", "needKey": True}
+        except ConnectionError as e:
+            return {"error": f"Google's Gemini service didn't respond properly ({e}). Try again in a moment."}
         except Exception as e:
             return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
 
-        self._cfg["ask_used"] = [today, used + 1]   # counted per question, even if Google turns it down
-        save_config(self._cfg)
         # Each free model has its own allowance (e.g. 3.8 Flash 20/day, each Flash-Lite 500/day), so use them in
         # turn and remember which ones are used up, for a minute or until the daily reset.
         now = time.time()
@@ -956,6 +1007,8 @@ class Api:
         if not ready:
             return {"error": f"All the free Gemini models are at their limit right now. The next one frees up in about "
                              f"{self._wait_text(min(skip.values()) - now)}. It never charges you."}
+        self._cfg["ask_used"] = [today, used + 1]   # counted per question sent, even if Google turns it down
+        save_config(self._cfg)
         limited, busy, offline = False, False, None
         deadline = now + 120
         for i, model in enumerate(ready[:8]):
@@ -1014,16 +1067,10 @@ class Api:
         req_body = dict(body)
         if think_low and re.search(r"gemini-[3-9]", model):     # 3.x+ models: think less, answer faster
             req_body["generationConfig"] = {**body.get("generationConfig", {}), "thinkingConfig": {"thinkingLevel": "low"}}
-        auth = self._cfg.get("gemini_auth")
-        url = f"{GEMINI}/{model}:streamGenerateContent?alt=sse"
-        headers = {"User-Agent": USER_AGENT, "Content-Type": "application/json"}
-        if auth == "query":
-            url += "&key=" + urllib.parse.quote(key)
-        elif auth == "bearer":
-            headers["Authorization"] = "Bearer " + key
-        else:
-            headers["x-goog-api-key"] = key
-        req = urllib.request.Request(url, data=json.dumps(req_body).encode(), method="POST", headers=headers)
+        url, headers = self._gemini_auth(f"{GEMINI}/{model}:streamGenerateContent?alt=sse", key,
+                                         self._cfg.get("gemini_auth"))
+        headers.update({"User-Agent": USER_AGENT, "Content-Type": "application/json"})
+        req =urllib.request.Request(url, data=json.dumps(req_body).encode(), method="POST", headers=headers)
         text, reason, last_push = "", None, 0.0
         try:
             with urllib.request.urlopen(req, timeout=quiet) as resp:
@@ -1068,7 +1115,7 @@ class Api:
         found = None
         lines = []
         for line in text.splitlines():
-            m = re.match(r"^\s*\**\s*OPEN:\s*\[*([^\]#\n]+?)\]*\s*(?:#\s*([^\n]+?))?\s*\**\s*$", line)
+            m = re.match(r"^\s*\**\s*OPEN:\s*\[*([^\]#\n]+?)\]*\s*(?:#\s*([^\]\n]+?))?\]*\s*\**\s*$", line)
             if m and found is None:
                 found = (m.group(1).strip(), (m.group(2) or "").strip())
             elif not m:
@@ -1096,8 +1143,8 @@ class Api:
         if re.search(r"limit:\s*0\b", e.get("message", "")):
             return now + 3 * 86400                       # no free allowance for this model at all
         if "PerDay" in quota_ids:
-            pacific = now - 8 * 3600                     # daily quotas reset at midnight Pacific time
-            return (pacific // 86400 + 1) * 86400 + 8 * 3600
+            offset = pacific_offset(now) * 3600            # daily quotas reset at midnight Pacific time
+            return ((now - offset) // 86400 + 1) * 86400 + offset
         delay = next((d.get("retryDelay") for d in details if d.get("retryDelay")), "60s")
         try:
             return now + max(5.0, float(str(delay).rstrip("s")))

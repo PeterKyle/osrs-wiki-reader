@@ -5,10 +5,14 @@ const AI_STUDIO = 'https://aistudio.google.com/apikey';
 const chat = { pop: $('askPop'), body: $('askBody'), input: $('askInput'), history: [], busy: false };
 
 // Small, safe Markdown subset: paragraphs, lists, tables, bold/italic/code, [[wiki links]] and [text](https://…)
+const HTML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+const unescapeHtml = (s) => s.replace(/&(amp|lt|gt|quot|#39);/g, (m, e) => HTML_ENTITIES[e]);
+
 function renderMarkdown(src) {
   const inline = (s) => escapeHtml(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, t, label) => `<a href="${wikiHref(t.trim())}">${label || t}</a>`)
+    // the title is already HTML-escaped here; un-escape it before building the URL ("Ava's device", "A & B")
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, t, label) => `<a href="${wikiHref(unescapeHtml(t.trim()))}">${label || t}</a>`)
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => `<a href="${url}" data-ext>${label}</a>`)
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
     .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
@@ -93,6 +97,10 @@ function showChat() {
   $('askInputRow').hidden = false;
   chat.body.innerHTML = chat.history.length ? '' : welcomeHtml();
   chat.history.forEach((m) => addBubble(m.role, m.text, m.sources, false));
+  if (chat.pending) {   // an answer is still on its way: keep the question and the incoming answer on screen
+    addBubble('user', chat.pendingQ, [], false);
+    chat.body.appendChild(chat.pending);
+  }
   scrollChat();
   chat.input.focus();
 }
@@ -124,6 +132,7 @@ async function send(question) {
   thinking.innerHTML = '<span class="dots"><i></i><i></i><i></i></span> <span class="status">Reading the wiki…</span>';
   chat.body.appendChild(thinking);
   chat.pending = thinking;
+  chat.pendingQ = question;
   scrollChat();
   let r;
   try {
@@ -146,6 +155,10 @@ async function send(question) {
   chat.history.push({ role: 'user', text: question }, { role: 'model', text: answer, sources: r.sources });
   $('askModel').textContent = r.model ? `AI · ${r.model.replace(/^gemini-([\d.]+)-flash(-lite)?$/, (m, v, l) => `Gemini ${v} Flash${l ? '-Lite' : ''}`)}` : '';
   addBubble('model', answer, r.sources);
+  // keep a long session light: only the last 50 exchanges stay in memory and on screen
+  if (chat.history.length > 100) chat.history.splice(0, chat.history.length - 100);
+  const bubbles = chat.body.querySelectorAll('.msg');
+  for (let i = 0; i < bubbles.length - 100; i++) bubbles[i].remove();
   if (r.open) {
     // Gemini asked to open a page: show it (scrolled to the section) and tuck the chat away. ✦ brings it back.
     closeAsk();
