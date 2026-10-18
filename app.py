@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.5.4"
+VERSION = "1.5.5"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -402,7 +402,9 @@ DEFAULTS = {
     "hotkey_spec": None,     # [modifiers, virtual key]; None = look the label up in HOTKEYS
     "tour_seen": False,
     "gim_groups": {},
-    "goal": None,            # the goal pinned to the home screen: {rsn, type: level|xp|kills, name, target, label}        # account name (lower case) -> its Group Ironman group name      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
+    "goal": None,
+    "wom_auto": True,        # keep your account fresh on Wise Old Man (at most every 6 hours, only if it's tracked)
+    "wom_auto_at": 0,            # the goal pinned to the home screen: {rsn, type: level|xp|kills, name, target, label}        # account name (lower case) -> its Group Ironman group name      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
     "ask_hotkey": "Ctrl+Alt+Q",          # opens the Wise Old Man chat
     "ask_hotkey_spec": [0x0001 | 0x0002, 0x51],
     "recent": [],
@@ -974,6 +976,28 @@ class Api:
             msg = (data or {}).get("message") if isinstance(data, dict) else None
             return {"error": msg or f"Wise Old Man couldn't update this player (HTTP {status})."}
         return self.player(name, refresh=True)
+
+    def _auto_wom_loop(self):
+        """Keeps your own account fresh on Wise Old Man: shortly after start, then checked every 30 minutes,
+        updating when the last one is over 6 hours old. Only for an account Wise Old Man already tracks, so it
+        never signs anyone up; one small request each time."""
+        time.sleep(25)   # let the app finish starting first
+        while True:
+            try:
+                me = self._cfg.get("me")
+                if self._cfg.get("wom_auto", True) and me and time.time() - (self._cfg.get("wom_auto_at") or 0) > 6 * 3600:
+                    p = self.player(me)
+                    if p and not p.get("error") and p.get("wom"):
+                        r = self.wom_update(me)
+                        self._cfg["wom_auto_at"] = time.time()   # also after a failure: try again in 6 hours, not sooner
+                        save_config(self._cfg)
+                        if not r.get("error"):
+                            with self._mem_lock:
+                                self._extras.pop(me.lower(), None)   # milestones and records refresh too
+                            self._window.evaluate_js("window.onWomAutoUpdated && onWomAutoUpdated()")
+            except Exception:
+                pass
+            time.sleep(1800)
 
     def save_account(self, name):
         name = (name or "").strip()
@@ -2142,6 +2166,7 @@ class Api:
             "askHotkey": self._cfg["ask_hotkey"],
             "guideSeen": bool(self._cfg.get("tour_seen")),
             "goal": self._cfg.get("goal"),
+            "womAuto": bool(self._cfg.get("wom_auto", True)),
             "hotkeyTypes": self._hk_types["show"],
             "askHotkeyTypes": self._hk_types["ask"],
             "askHotkeyOk": self._ask_hotkey_ok,
@@ -2160,6 +2185,8 @@ class Api:
             self._cfg["zoom"] = max(70, min(160, int(value)))
         elif key == "clear_recent":
             self._cfg["recent"] = []
+        elif key == "wom_auto":
+            self._cfg["wom_auto"] = bool(value)
         elif key == "guide_seen":
             self._cfg["tour_seen"] = bool(value)
         save_config(self._cfg)
@@ -2386,6 +2413,7 @@ class Api:
         if self._cfg.get("maximized"):
             self.toggle_maximize()
         threading.Thread(target=self._hotkey_loop, daemon=True).start()
+        threading.Thread(target=self._auto_wom_loop, daemon=True).start()
         try:
             self._notifier = Notifier(resource_path("ui", "icon.ico"), APP_NAME,
                                       on_check=self._check_alerts, on_click=self._on_tray_click)

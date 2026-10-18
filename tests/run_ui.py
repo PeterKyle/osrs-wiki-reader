@@ -97,6 +97,8 @@ SCENARIOS = [
     dict(name="homegoal", mode="homegoal", size=(1100, 1000), budget=9000, expect={"pinnedOn": True, "goal": "99 Magic", "recap": "+4.5MXP10level-ups0boss kills"}),
     dict(name="ca", mode="ca", size=(1100, 900), budget=9000,
          expect={"since": "78 tasks · 173 points", "unlocked": "Medium", "next": "263 points to Hard rewards", "tiers": 6}),
+    dict(name="pets", mode="pets", size=(1100, 900), budget=9000,
+         expect={"top3": ["Pet chaos elemental 21%", "Pet Kraken 19%", "Bran 10%"]}),
     dict(name="switcherview", mode="switcherview", size=(1100, 700), budget=9000, expect={"rows": 4}),
     dict(name="switcher", mode="switcher", size=(1100, 800), budget=9000,
          expect={"first": "Agility", "second": "Abyssal whip", "opened": "Abyssal whip", "closed": True}),

@@ -332,3 +332,6 @@
 .ca-next b.done { color: var(--success); }
 .ca-tiers { display: flex; flex-direction: column; gap: 2px; }
 .ca-link { margin-top: 8px; font-size: 12.5px; }
+.pets .goal { grid-template-columns: 0 minmax(300px, 1.6fr) 1fr 44px 0; }
+.pets .goal .gv { text-align: right; }
+.pets .goal .gn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

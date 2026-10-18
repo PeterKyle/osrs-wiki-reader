@@ -56,6 +56,8 @@ The Wise Old Man uses Google's Gemini with **your own free key**. It takes about
 - **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side.
   - Goals (closest 99s, next level-ups, hours to max), milestones with dates, your best day/week/month/year, and an XP-over-time chart.
   - Your Group Ironman group, with every member's levels.
+  - Pet chances: every boss pet ranked by how likely you'd have it by your kill count.
+  - Your account stays fresh on Wise Old Man: the app updates it every 6 hours while it's open (only if Wise Old Man already tracks it; switch off in Settings).
   - Combat achievements: points, the reward tier you've unlocked, how far to the next, and progress per tier (needs WikiSync).
   - **Share**: a picture of your profile to paste into Discord.
 - **Your kill count on boss pages**: open a boss, clue or minigame page and it shows your KC, rank and this week's kills, plus your pet luck (how many players would have the pet by your kill count) and the collection log drops you'd expect by now.

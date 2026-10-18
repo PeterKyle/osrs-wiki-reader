@@ -291,6 +291,47 @@ async function renderCombatAchievements(p) {
   $('caWiki').onclick = () => openPage('Combat Achievements');
 }
 
+/* ---------------- pet chances: every boss pet you could have by now ---------------- */
+
+async function renderPetChances(p) {
+  const box = $('pxPets');
+  if (!box) return;
+  const pets = await api.pet_rates();
+  if (!box.isConnected || !pets) return;
+  const petFor = Object.fromEntries(Object.entries(pets).map(([k, v]) => [k.toLowerCase(), v]));
+  const rows = p.activities.filter((a) => a.score > 0 && petFor[a.name.toLowerCase()]).map((a) => {
+    const pet = petFor[a.name.toLowerCase()];
+    return { a, pet, pct: (1 - Math.pow(1 - 1 / pet.rate, a.score)) * 100 };
+  }).sort((x, y) => y.pct - x.pct);
+  if (!rows.length) return;
+  const shown = (x) => (x < 1 ? '<1%' : x > 99 ? '>99%' : `${Math.round(x)}%`);
+  box.innerHTML = `<h2 class="home-h">Pet chances <span class="since">how many players would have each pet by your kill count</span></h2>
+    <div class="c-card goals pets">` + rows.slice(0, 10).map(({ a, pet, pct }) => `<div class="goal">
+      <span class="gn wide"><b>${escapeHtml(pet.pet)}</b> <a class="dim" href="${wikiHref(KC_PAGES[a.name] || a.name)}">${escapeHtml(a.name)}</a>
+        <span class="dim">· ${fmt(a.score)} at 1/${fmt(pet.rate)}</span></span>
+      <span class="gtrack"><span style="width:${Math.max(2, pct)}%"></span></span><span class="gv">${shown(pct)}</span><span></span></div>`).join('') +
+    (rows.length > 10 ? `<p class="dim goal-note">${rows.length - 10} more bosses with a smaller chance.</p>` : '') +
+    `<p class="dim goal-note">The hiscores don't show which pets you already own; this is just the odds.</p></div>`;
+}
+
+// Settings: keep Wise Old Man updated (on by default)
+function renderWomAuto() {
+  $('womAutoSeg').querySelectorAll('button').forEach((b) => b.classList.toggle('on', (b.dataset.v === '1') === (state.womAuto !== false)));
+}
+$('womAutoSeg').onclick = async (e) => {
+  const b = e.target.closest('button[data-v]');
+  if (!b) return;
+  state = await api.set_pref('wom_auto', b.dataset.v === '1');
+  renderWomAuto();
+};
+$('btnSettings').addEventListener('click', renderWomAuto);
+
+// Wise Old Man was refreshed in the background (app.py): redraw what uses it
+window.onWomAutoUpdated = function () {
+  const cur = nav.stack[nav.idx];
+  if (cur && cur.kind === 'home') { renderPinnedGoal(); renderWeeklyRecap(); }
+};
+
 /* ---------------- Group Ironman group (official GIM hiscores) ---------------- */
 
 async function renderGroup(p) {

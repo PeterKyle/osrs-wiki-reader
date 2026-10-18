@@ -121,6 +121,12 @@ const S = {
     const q = (s) => (box.querySelector(s) || {}).textContent || '';
     return { since: q('.since'), unlocked: q('.ca-top b'), next: q('.ca-next .dim').replace(/\s+/g, ' ').trim(), tiers: box.querySelectorAll('.ca-tiers .goal').length };
   },
+  async pets() {
+    await openCharacter('Clyde Lives'); await wait(1500);
+    const box = $id('pxPets'); box.scrollIntoView(); els.scroller.scrollTop -= 80; await wait(300);
+    const rows = [...box.querySelectorAll('.goal')].map((r) => r.querySelector('.gn b').textContent + ' ' + r.querySelector('.gv').textContent);
+    return { top3: rows.slice(0, 3), rows: rows.length };
+  },
   async switcherview() {   // held open, for the screenshot
     await openPage('Abyssal whip'); await wait(400); await openPage('Agility'); await wait(400);
     await openCharacter('Woox'); await wait(600); await openPage('Optimal quest guide'); await wait(600);
