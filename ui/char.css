@@ -310,3 +310,14 @@
 .cando .ok { display: inline-flex; align-items: center; gap: 6px; color: var(--success); font-weight: 500; }
 .cando .ok .ic { width: 14px; height: 14px; stroke-width: 2.4; }
 .cando .no { color: var(--danger); font-weight: 500; }
+
+/* expected loot by your kill count (in the KC banner) */
+.mykc-loot { flex-basis: 100%; padding-top: 8px; margin-top: 2px; box-shadow: 0 -1px 0 var(--accent-ring); font-size: 13px; }
+.mykc-loot summary { cursor: pointer; color: var(--text-2); font-weight: 500; margin-bottom: 4px; }
+.loot-rows { display: grid; grid-template-columns: minmax(140px, 1.4fr) auto auto auto; gap: 4px 18px; align-items: baseline; }
+.loot { display: contents; }
+.loot a { color: var(--link); text-decoration: none; }
+.loot a:hover { text-decoration: underline; }
+.loot b { color: var(--text); }
+.loot span:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; }
+.loot span:last-child { text-align: right; }

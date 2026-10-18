@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -713,6 +713,38 @@ def parse_pet_rates(page_html):
     return out
 
 
+def parse_drop_rate(text):
+    """'1/400', '1/1,200', '12/128', '3 × 1/512' -> chance per kill (0 if it isn't a plain rate)."""
+    m = re.match(r"\s*(?:([\d.]+)\s*[x×]\s*)?([\d.]+)\s*/\s*([\d.]+)", str(text or "").replace(",", ""))
+    try:
+        return float(m.group(1) or 1) * float(m.group(2)) / float(m.group(3)) if m else 0.0
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+def collection_log_index(rows, max_sources=60, commonest=1 / 100):
+    """{monster page (lower case): {item: chance per kill}} from the wiki's collection log sources.
+    Collection log items are exactly the drops players chase. Left out: drops shared by hundreds of monsters
+    (the rare drop table's Shield left half, Dragon spear, Long bone) and anything more common than 1/100."""
+    idx = {}
+    for r in rows or []:
+        item = (r.get("item_name") or "").split("#")[0].strip()
+        if sum(1 for k in r.get("kinds") or [] if k == "drop") > max_sources:
+            continue
+        for src, rate, kind in zip(r.get("sources") or [], r.get("rates") or [], r.get("kinds") or []):
+            m = re.match(r"\[\[([^\]|#]+)(#[^\]|]*)?", src or "")
+            p = parse_drop_rate(rate)
+            if not item or not m or kind != "drop" or not 0 < p <= commonest:
+                continue
+            page = m.group(1).strip().lower()
+            variant = (m.group(2) or "").lower()
+            entry = idx.setdefault(page, {})
+            # several versions of one monster (e.g. "Standard" / "Wilderness Slayer Cave"): prefer the standard one
+            if item not in entry or not variant or "standard" in variant or "regular" in variant:
+                entry[item] = p
+    return idx
+
+
 def _strip_wikitext(text):
     text = re.sub(r"<ref[^>]*?/>|<ref.*?</ref>", "", text, flags=re.S)
     text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", text)          # [[page|label]] -> label
@@ -793,8 +825,9 @@ class Api:
         self._mem_lock = threading.Lock()   # guards the in-memory caches (pywebview runs API calls on parallel threads)
         self._chats_lock = threading.Lock()
         self._extras, self._gim, self._img, self._update = {}, {}, {}, None
-        self._pets = self._facts = None
+        self._day = {}   # name -> (fetched at, data) for _daily()
         self._reqs = {}
+
         self._notifier = None
         self._mini = False
         self._full_rect = None
@@ -1763,31 +1796,51 @@ class Api:
         save_config(self._cfg)
         return {"group": group, "members": members}
 
+    # ---- wiki data that changes rarely: kept on disk for a day, so restarting the app doesn't fetch it again ----
+    def _daily(self, name, fetch):
+        mem = self._day.get(name)
+        if mem and time.time() - mem[0] < 86400:
+            return mem[1]
+        path = os.path.join(CONFIG_DIR, "cache", f"{name}.json")
+        try:
+            if time.time() - os.path.getmtime(path) < 86400:
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                self._day[name] = (os.path.getmtime(path), data)
+                return data
+        except (OSError, ValueError):
+            pass
+        try:
+            data = fetch()
+        except Exception:
+            data = None
+        if not data:   # wiki unreachable: an out-of-date copy beats nothing
+            try:
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f)
+            except (OSError, ValueError):
+                return None
+        self._day[name] = (time.time(), data)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path + ".tmp", "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(path + ".tmp", path)
+        except OSError:
+            pass
+        return data
+
     # ---- boss pages: pet drop rates; home: Wiki Fun Facts (both change rarely: cached for a day) ----
     def pet_rates(self):
-        if self._pets and time.time() - self._pets[0] < 86400:
-            return self._pets[1]
-        try:
-            text = api_get(action="parse", page="Pet", prop="text")["parse"]["text"]
-            rates = parse_pet_rates(text)
-        except Exception:
-            return {}
-        if rates:
-            self._pets = (time.time(), rates)
-        return rates
+        return self._daily("pet_rates", lambda: parse_pet_rates(
+            api_get(action="parse", page="Pet", prop="text")["parse"]["text"])) or {}
 
     def fun_facts(self):
-        if self._facts and time.time() - self._facts[0] < 86400:
-            return self._facts[1]
-        try:
+        def fetch():
             pg = api_get(action="query", titles="RuneScape:Wiki Fun Facts", prop="revisions", rvprop="content",
                          rvslots="main")["query"]["pages"][0]
-            facts = parse_fun_facts(pg["revisions"][0]["slots"]["main"]["content"])
-        except Exception:
-            return []
-        if facts:
-            self._facts = (time.time(), facts)
-        return facts
+            return parse_fun_facts(pg["revisions"][0]["slots"]["main"]["content"])
+        return self._daily("fun_facts", fetch) or []
 
     def set_goal(self, goal):
         """Pins one goal to the home screen (or unpins it with None)."""
@@ -1802,6 +1855,16 @@ class Api:
         self._cfg["goal"] = goal
         save_config(self._cfg)
         return self.get_state()
+
+    # ---- boss pages: collection log drops, for "expected loot by your kill count" ----
+    def rare_drops(self, title):
+        """The monster's collection log drops (pet left out: it has its own line), most likely first."""
+        index = self._daily("collection_log", lambda: collection_log_index(self._bucket(
+            "bucket('collection_log_source').select('item_name','sources','rates','kinds').limit(5000).run()"))) or {}
+        pets = {v["pet"].lower() for v in (self.pet_rates() or {}).values()}
+        items = index.get((title or "").strip().lower(), {})
+        drops = [{"item": k, "p": v, "rate": f"1/{round(1 / v):,}"} for k, v in items.items() if k.lower() not in pets]
+        return sorted(drops, key=lambda x: -x["p"])[:8]
 
     # ---- article pages: what you need for this monster / spell ----
     def page_requirements(self, title):

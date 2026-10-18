@@ -119,7 +119,8 @@ const S = {
     state.me = 'Clyde Lives';
     await openPage('Kraken'); await wait(1200);
     const pet = els.article.querySelector('.mykc-pet');
-    return { pet: pet ? pet.textContent.replace(/\s+/g, ' ').trim() : null };
+    const loot = [...els.article.querySelectorAll('.mykc-loot .loot')].map((r) => [...r.children].map((c) => c.textContent.trim()).join(' | '));
+    return { pet: pet ? pet.textContent.replace(/\s+/g, ' ').trim() : null, loot };
   },
   async char() { await openCharacter('Lynx Titan'); await wait(600); return { name: (els.char.querySelector('h1, h2') || {}).textContent }; },
   async compare() { await openCompare('Lynx Titan', 'Woox'); await wait(600); },

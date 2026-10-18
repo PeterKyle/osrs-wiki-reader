@@ -8,3 +8,4 @@ window.__PROFILE.player = {"accountType": "regular", "name": "Clyde Lives", "ski
 window.__PROFILE.reqs = {"Abyssal demon": {"monster": {"slayer": 85, "assignedBy": ["Chaeldar", "Duradel", "Konar", "Krystilia", "Mortimer", "Nieve", "Vannaka"]}}, "Ice Barrage": {"spell": {"level": 94, "spellbook": "Ancient"}}};
 window.__PAGES["Abyssal demon"] = { title: "Abyssal demon", html: "<p>The <b>abyssal demon</b> is a Slayer monster. (Test page; wiki text from the OSRS Wiki, CC BY-NC-SA 3.0.)</p>" };
 window.__PAGES["Ice Barrage"] = { title: "Ice Barrage", html: "<p><b>Ice Barrage</b> is an Ancient Magicks spell. (Test page; wiki text from the OSRS Wiki, CC BY-NC-SA 3.0.)</p>" };
+window.__PROFILE.drops = {"Kraken": [{"item": "Kraken tentacle", "p": 0.0025, "rate": "1/400"}, {"item": "Trident of the Seas", "p": 0.001953125, "rate": "1/512"}, {"item": "Jar of Dirt", "p": 0.001, "rate": "1/1,000"}]};

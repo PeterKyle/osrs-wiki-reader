@@ -96,7 +96,10 @@ SCENARIOS = [
                  "magic": "Needs 94 Magic (Ancient spellbook): you have 93 (1 to go)"}),
     dict(name="homegoal", mode="homegoal", size=(1100, 1000), budget=9000, expect={"pinnedOn": True, "goal": "99 Magic", "recap": "+4.5MXP10level-ups0boss kills"}),
     dict(name="petluck", mode="petluck", size=(1100, 800), budget=8000,
-         expect={"pet": "Pet Kraken 1/3,000 · after 630 kills, 19% of players would have it by now on rate"}),
+         expect={"pet": "Pet Kraken 1/3,000 · after 630 kills, 19% of players would have it by now on rate",
+                 "loot": ["Kraken tentacle | 1/400 | 1.6 expected | 79% would have one",
+                          "Trident of the Seas | 1/512 | 1.2 expected | 71% would have one",
+                          "Jar of Dirt | 1/1,000 | 0.6 expected | 47% would have one"]}),
     dict(name="guide", mode="guide", size=(1100, 900), expect={"tourOpen": True, "tourTitle": "Welcome to OSRS Wiki Reader"}),
     dict(name="guidecard", mode="guidecard", size=(1100, 900), expect={"guideOpen": True}),
     # new player: the tour moves on by itself after each action, the spotlight sits on the target, Esc ends it

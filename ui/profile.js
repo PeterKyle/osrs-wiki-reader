@@ -457,9 +457,21 @@ function petLuckHtml(a, pet) {
     · after ${fmt(a.score)} ${unit}, <b>${shown}</b> of players would have it by now <span class="luck ${cls}">${verdict}</span></div>`;
 }
 
+// Expected collection log drops by your kill count: kills x chance, and the chance of having at least one
+function lootHtml(kc, drops) {
+  if (!drops || !drops.length || kc <= 0) return '';
+  const exp = (x) => (x < 0.1 ? '<0.1' : x < 10 ? x.toFixed(1) : fmt(Math.round(x)));
+  const pct = (x) => (x < 1 ? '<1%' : x > 99 ? '>99%' : `${Math.round(x)}%`);
+  return `<details class="mykc-loot" open><summary>Expected loot by your ${fmt(kc)} kills</summary><div class="loot-rows">` +
+    drops.map((d) => `<div class="loot"><a href="${wikiHref(d.item)}">${escapeHtml(d.item)}</a><span class="dim">${escapeHtml(d.rate)}</span>
+      <span><b>${exp(kc * d.p)}</b> expected</span><span class="dim">${pct((1 - Math.pow(1 - d.p, kc)) * 100)} would have one</span></div>`).join('') +
+    `</div></details>`;
+}
+
 window.showMyKc = async function (title) {
   if (!state.me) return;
-  const [p, pets] = await Promise.all([api.player(state.me), api.pet_rates().catch(() => ({}))]);
+  const [p, pets, drops] = await Promise.all([api.player(state.me), api.pet_rates().catch(() => ({})),
+    api.rare_drops(title).catch(() => [])]);
   const petFor = Object.fromEntries(Object.entries(pets || {}).map(([k, v]) => [k.toLowerCase(), v]));
   if (!p || p.error || nav.stack[nav.idx].title !== title) return;
   const t = title.toLowerCase();
@@ -474,7 +486,8 @@ window.showMyKc = async function (title) {
     const label = hits.length > 1 || KC_PAGES[a.name] ? `${escapeHtml(a.name)}: ` : '';
     return `<span class="mykc-item">${label}<b>${fmt(a.score)}</b>${a.name.includes('Clue') || a.name.includes('Rank') || a.name.includes('Zeal') || a.name.includes('Glory') || a.name.includes('Points') || a.name.includes('Logged') || a.name.includes('Rifts') ? '' : ' kills'}
       <span class="dim">· rank #${fmt(a.rank)}</span>${g > 0 ? ` <span class="gain">+${fmt(g)} this week</span>` : ''}</span>`;
-  }).join('') + hits.map((a) => (petFor[a.name.toLowerCase()] ? petLuckHtml(a, petFor[a.name.toLowerCase()]) : '')).join('');
+  }).join('') + hits.map((a) => (petFor[a.name.toLowerCase()] ? petLuckHtml(a, petFor[a.name.toLowerCase()]) : '')).join('') +
+    (hits.length === 1 && !KC_PAGES[hits[0].name] ? lootHtml(hits[0].score, drops) : '');   // one boss = one kill count to go on
   const h1 = article.querySelector('h1');
   if (h1) h1.after(box); else article.prepend(box);
 };
