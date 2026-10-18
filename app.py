@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.6.4"
+VERSION = "1.7.0"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -991,8 +991,12 @@ def fetch_wikisync(name):
         diaries[area] = {tier: {"complete": bool(info.get("complete")), "tasks": info.get("tasks") or []}
                          for tier, info in tiers.items() if isinstance(info, dict)}
     ca = data.get("combat_achievements")
+    clog = data.get("collection_log")
     return {"quests": quests, "levels": data.get("levels") or {}, "diaries": diaries,
             "combatAchievements": [i for i in ca if isinstance(i, int)] if isinstance(ca, list) else None,
+            # item ids, filled in once the player presses WikiSync's button in their in-game collection log
+            "collectionLog": [i for i in clog if isinstance(i, int)] if isinstance(clog, list) and clog else None,
+            "collectionLogTotal": data.get("collectionLogItemCount"),
             "timestamp": data.get("timestamp")}
 
 
@@ -1125,6 +1129,11 @@ class Api:
             "sync": sync_data,
             "fetchedAt": int(time.time()),
         }
+        ids = (sync_data or {}).get("collectionLog")
+        if ids:   # collection log item ids -> names (the wiki's collection log list, refreshed daily)
+            names = self._clog_names()
+            result["clog"] = {"items": sorted({names[str(i)] for i in ids if str(i) in names}), "count": len(ids),
+                              "total": (sync_data or {}).get("collectionLogTotal") or 0}
         with self._mem_lock:
             self._players[key] = (time.time(), result)
             if len(self._players) > 20:   # keep only recent lookups
@@ -1734,6 +1743,9 @@ class Api:
         bank_line = self._bank_context([p["text"] for p in pages] + [question, ctx_sel or ""])
         if bank_line:
             looking_at.append(bank_line)
+        clog_line = self._clog_context([p["text"] for p in pages] + [question, ctx_sel or ""])
+        if clog_line:
+            looking_at.append(clog_line)
         prompt = (f"Wiki pages for this question:\n\n{context}\n\n---\n\n" if context
                   else "(No matching wiki pages were found.)\n\n")
         if looking_at:
@@ -2517,6 +2529,22 @@ class Api:
         by_profit = sorted((x for x in rows if x["profit"] and x["profit"] > 0), key=lambda x: -x["profit"])[:10]
         return {"xp": by_xp, "profit": by_profit, "count": len(rows)}
 
+    def _clog_names(self):
+        def fetch():
+            rows = self._bucket("bucket('collection_log_source').select('item_id','item_name').limit(5000).run()")
+            return {str(r["item_id"]): r["item_name"].split("#")[0].strip() for r in rows if r.get("item_id") and r.get("item_name")}
+        return self._daily("clog_names", fetch) or {}
+
+    def clog_has(self, names):
+        """For your ("This is me") account: which of these items are in your collection log; None if not synced."""
+        me = self._cfg.get("me")
+        p = self.player(me) if me else None
+        clog = p and not p.get("error") and p.get("clog")
+        if not clog:
+            return None
+        logged = {item_key(n) for n in clog["items"]}
+        return {n: item_key(n) in logged for n in (names or [])[:300] if isinstance(n, str)}
+
     def _item_sets(self):
         def fetch():
             rows, offset = [], 0
@@ -2544,6 +2572,26 @@ class Api:
             have[item_key(name)] = have.get(item_key(name), 0) + qty
         return [{"set": s, "owned": bool(have.get(item_key(s))),
                  "pieces": [{"name": x, "have": bool(have.get(item_key(x)))} for x in p]} for s, p in found]
+
+    def _clog_context(self, texts):
+        """For the Wise Old Man: collection log items these pages mention (already obtained), and your pets."""
+        me = self._cfg.get("me")
+        try:
+            p = self.player(me) if me else None
+        except Exception:
+            return ""
+        clog = p and not p.get("error") and p.get("clog")
+        if not clog:
+            return ""
+        blob = " ".join(texts).lower()
+        got = [n for n in clog["items"] if len(n) > 3 and re.search(r"(?<![a-z])" + re.escape(n.lower()) + r"(?![a-z])", blob)]
+        pets = {v["pet"].lower() for v in (self.pet_rates() or {}).values()}
+        own_pets = [n for n in clog["items"] if n.lower() in pets]
+        line = f"Their collection log: {clog['count']}/{clog['total'] or '?'} slots."
+        if got:
+            line += " Already obtained, of the items these pages mention: " + ", ".join(got[:40]) + "."
+        line += " Pets: " + (", ".join(own_pets) if own_pets else "none yet") + "."
+        return line
 
     def _bank_context(self, texts):
         """For the Wise Old Man: items in your bank that the wiki pages (or the question) mention."""

@@ -258,13 +258,19 @@ function openBankImport(p) {
 // item pages: how many you have
 window.showInBank = async function (title) {
   if (!state.me) return;
-  const [isItem, have] = await Promise.all([api.is_item_page(title), api.bank_has([title])]);
+  const [isItem, have, logged] = await Promise.all([api.is_item_page(title), api.bank_has([title]), api.clog_has([title])]);
   const article = els.article;
-  if (!isItem || !have || article.hidden || nav.stack[nav.idx].title !== title || article.querySelector('.inbank')) return;
-  const n = have[title] || 0;
+  if (!isItem || (!have && !logged) || article.hidden || nav.stack[nav.idx].title !== title || article.querySelector('.inbank')) return;
   const box = document.createElement('div');
-  box.className = 'inbank' + (n ? ' yes' : '');
-  box.innerHTML = n ? `${svgIcon('i-check')}In your bank: <b>${fmt(n)}</b>` : 'Not in your bank';
+  box.className = 'inbank-row';
+  const parts = [];
+  if (have) {
+    const n = have[title] || 0;
+    parts.push(`<span class="inbank${n ? ' yes' : ''}">${n ? `${svgIcon('i-check')}In your bank: <b>${fmt(n)}</b>` : 'Not in your bank'}</span>`);
+  }
+  if (logged && logged[title]) parts.push(`<span class="inbank yes">${svgIcon('i-check')}In your collection log</span>`);
+  if (!parts.length) return;
+  box.innerHTML = parts.join('');
   const after = article.querySelector('.mykc') || article.querySelector('h1');
   if (after) after.after(box); else article.prepend(box);
 };
@@ -339,7 +345,7 @@ window.showSetProgress = async function (title) {
     return `<div class="setprog-row"><div>${head}</div><div class="setprog-pieces">${s.pieces.map((x) =>
       `<a href="${wikiHref(x.name)}" class="${x.have || s.owned ? 'own' : ''}">${x.have || s.owned ? svgIcon('i-check') : ''}${escapeHtml(x.name)}</a>`).join('')}</div></div>`;
   }).join('');
-  const after = article.querySelector('.inbank') || article.querySelector('.mykc') || article.querySelector('h1');
+  const after = article.querySelector('.inbank-row') || article.querySelector('.mykc') || article.querySelector('h1');
   if (after) after.after(box); else article.prepend(box);
 };
 
@@ -580,6 +586,30 @@ async function renderCombatAchievements(p) {
   $('caWiki').onclick = () => openPage('Combat Achievements');
 }
 
+/* ---------------- collection log (WikiSync: the player presses its button in the in-game log) ---------------- */
+
+async function renderCollectionLog(p) {
+  const box = $('pxClog');
+  if (!box) return;
+  if (!p.clog) {
+    box.innerHTML = p.sync ? `<h2 class="home-h">Collection log</h2><div class="c-card c-note">Not synced yet. In game, open your
+      <b>collection log</b> and press the <b>WikiSync</b> button in it. Then pets, logged drops and your progress show up here and on boss pages.</div>` : '';
+    return;
+  }
+  const pets = await api.pet_rates();
+  if (!box.isConnected) return;
+  const petNames = new Set(Object.values(pets || {}).map((v) => v.pet.toLowerCase()));
+  const myPets = p.clog.items.filter((n) => petNames.has(n.toLowerCase()));
+  const pct = p.clog.total ? p.clog.count / p.clog.total : 0;
+  box.innerHTML = `<h2 class="home-h">Collection log <span class="since">synced through WikiSync</span></h2><div class="c-card clog">
+    <div class="clog-top"><b>${fmt(p.clog.count)}</b><span class="dim"> / ${p.clog.total ? fmt(p.clog.total) : '?'} slots</span>
+      ${p.clog.total ? `<span class="gtrack big"><span style="width:${Math.max(2, pct * 100)}%"></span></span><small class="dim">${(pct * 100).toFixed(1)}%</small>` : ''}</div>
+    <div class="clog-pets">${myPets.length ? `Pets: ${myPets.map((n) => `<a href="${wikiHref(n)}" class="pet-own">${svgIcon('i-check')}${escapeHtml(n)}</a>`).join('')}` : '<span class="dim">No boss pets yet.</span>'}</div>
+    <p class="dim clog-note">To update it, press the WikiSync button in your in-game collection log again.</p>
+    <button class="linkbtn" id="clogWiki">Collection log on the wiki</button></div>`;
+  $('clogWiki').onclick = () => openPage('Collection log');
+}
+
 /* ---------------- pet chances: every boss pet you could have by now ---------------- */
 
 async function renderPetChances(p) {
@@ -588,19 +618,33 @@ async function renderPetChances(p) {
   const pets = await api.pet_rates();
   if (!box.isConnected || !pets) return;
   const petFor = Object.fromEntries(Object.entries(pets).map(([k, v]) => [k.toLowerCase(), v]));
-  const rows = p.activities.filter((a) => a.score > 0 && petFor[a.name.toLowerCase()]).map((a) => {
+  const logged = new Set(((p.clog && p.clog.items) || []).map((n) => n.toLowerCase()));
+  const ownedPets = [...new Set(Object.values(pets).map((v) => v.pet))].filter((n) => logged.has(n.toLowerCase()));
+  // luck for a pet you have: from the boss with the most kills that drops it
+  const ownedLuck = (name) => {
+    const src = p.activities.filter((a) => a.score > 0 && petFor[a.name.toLowerCase()] && petFor[a.name.toLowerCase()].pet === name)
+      .sort((x, y) => y.score - x.score)[0];
+    if (!src) return '';
+    const pct = (1 - Math.pow(1 - 1 / petFor[src.name.toLowerCase()].rate, src.score)) * 100;
+    const [word, cls] = luckTag(pct, true);
+    return ` <span class="luck ${cls}" title="${Math.round(pct)}% of players would have it by ${fmt(src.score)} kills">${word}</span>`;
+  };
+  const rows = p.activities.filter((a) => a.score > 0 && petFor[a.name.toLowerCase()] && !logged.has(petFor[a.name.toLowerCase()].pet.toLowerCase())).map((a) => {
     const pet = petFor[a.name.toLowerCase()];
     return { a, pet, pct: (1 - Math.pow(1 - 1 / pet.rate, a.score)) * 100 };
   }).sort((x, y) => y.pct - x.pct);
-  if (!rows.length) return;
+  if (!rows.length && !ownedPets.length) return;
   const shown = (x) => (x < 1 ? '<1%' : x > 99 ? '>99%' : `${Math.round(x)}%`);
   box.innerHTML = `<h2 class="home-h">Pet chances <span class="since">how many players would have each pet by your kill count</span></h2>
-    <div class="c-card goals pets">` + rows.slice(0, 10).map(({ a, pet, pct }) => `<div class="goal">
+    <div class="c-card goals pets">` +
+    (ownedPets.length ? `<div class="pets-owned">You have: ${ownedPets.map((n) => `<a href="${wikiHref(n)}" class="pet-own">${svgIcon('i-check')}${escapeHtml(n)}</a>${ownedLuck(n)}`).join('')}</div>` : '') +
+    rows.slice(0, 10).map(({ a, pet, pct }) => `<div class="goal">
       <span class="gn wide"><b>${escapeHtml(pet.pet)}</b> <a class="dim" href="${wikiHref(KC_PAGES[a.name] || a.name)}">${escapeHtml(a.name)}</a>
         <span class="dim">· ${fmt(a.score)} at 1/${fmt(pet.rate)}</span></span>
       <span class="gtrack"><span style="width:${Math.max(2, pct)}%"></span></span><span class="gv">${shown(pct)}</span><span></span></div>`).join('') +
     (rows.length > 10 ? `<p class="dim goal-note">${rows.length - 10} more bosses with a smaller chance.</p>` : '') +
-    `<p class="dim goal-note">The hiscores don't show which pets you already own; this is just the odds.</p></div>`;
+    (p.clog ? `<p class="dim goal-note">Pets you have come from your collection log (WikiSync); the rest are odds.</p></div>`
+      : `<p class="dim goal-note">These are only the odds. Sync your collection log with WikiSync to tick the pets you have.</p></div>`);
 }
 
 // Settings: keep Wise Old Man updated (on by default)
@@ -728,9 +772,14 @@ async function openShareCard(p) {
     g.fillStyle = '#f3efe8'; g.font = font(600, 22); g.fillText(b.name, 56, y);
     g.fillStyle = '#e2b259'; g.font = font(700, 22); g.textAlign = 'right'; g.fillText(fmt(b.score), 500, y); g.textAlign = 'left';
   });
+  if (p.clog) {
+    g.fillStyle = '#a39d93'; g.font = font(600, 16); g.fillText('COLLECTION LOG', 56, 470);
+    g.fillStyle = '#f3efe8'; g.font = font(600, 22);
+    g.fillText(`${fmt(p.clog.count)}${p.clog.total ? ` / ${fmt(p.clog.total)}` : ''} slots`, 56, 500);
+  }
   if (latest) {
-    g.fillStyle = '#a39d93'; g.font = font(600, 16); g.fillText('LATEST MILESTONE', 56, 520);
-    g.fillStyle = '#f3efe8'; g.font = font(600, 22); g.fillText(`${latest.name}  ·  ${shortDate(latest.date)}`, 56, 552);
+    g.fillStyle = '#a39d93'; g.font = font(600, 16); g.fillText('LATEST MILESTONE', 56, 540);
+    g.fillStyle = '#f3efe8'; g.font = font(600, 22); g.fillText(`${latest.name}  ·  ${shortDate(latest.date)}`, 56, 570);
   }
 
   // skills: the in-game 3-column layout
@@ -812,8 +861,23 @@ const KC_PAGES = {
   'Tombs of Amascut: Expert Mode': 'Tombs of Amascut', 'Lunar Chests': 'Lunar Chest', 'Deadman Points': 'Deadman Mode',
 };
 
+// How lucky (or dry) a drop is, judged at your current kill count: pct = share of players who'd have it by now.
+// Got it while few would have: lucky. Haven't got it while most would: dry. (The game doesn't say at which kill
+// count a drop came, so the current count is the best we can do.)
+function luckTag(pct, have) {
+  if (have) return pct < 10 ? ['very lucky', 'lucky'] : pct < 33 ? ['lucky', 'lucky'] : ['on rate', 'ok'];
+  return pct > 90 ? ['very dry', 'dry'] : pct > 75 ? ['dry', 'dry'] : pct > 50 ? ['getting dry', 'meh'] : ['on rate', 'ok'];
+}
+
 // Chance of having the pet after n kills at 1/rate: 1 - (1 - 1/rate)^n, shown as "x% of players would have it"
-function petLuckHtml(a, pet) {
+function petLuckHtml(a, pet, have) {
+  if (have) {
+    const pct = (1 - Math.pow(1 - 1 / pet.rate, a.score)) * 100;
+    const [word, cls] = luckTag(pct, true);
+    return `<div class="mykc-pet"><b>${escapeHtml(pet.pet)}</b> <span class="luck ok">${svgIcon('i-check')}you have it</span>
+      <span class="dim">· 1/${fmt(pet.rate)} · only ${pct < 1 ? '<1%' : `${Math.round(pct)}%`} of players would have it by ${fmt(a.score)} kills</span>
+      <span class="luck ${cls}">${word}</span></div>`;
+  }
   const pct = (1 - Math.pow(1 - 1 / pet.rate, a.score)) * 100;
   const shown = pct < 1 ? '<1%' : pct > 99 ? '>99%' : `${Math.round(pct)}%`;
   const [verdict, cls] = pct < 50 ? ['on rate', 'ok'] : pct < 75 ? ['getting dry', 'meh'] : pct < 90 ? ['dry', 'dry'] : ['very dry', 'dry'];
@@ -823,14 +887,19 @@ function petLuckHtml(a, pet) {
 }
 
 // Expected collection log drops by your kill count: kills x chance, and the chance of having at least one
-function lootHtml(kc, drops, owned) {
+function lootHtml(kc, drops, owned, logged) {
   if (!drops || !drops.length || kc <= 0) return '';
   const exp = (x) => (x < 0.1 ? '<0.1' : x < 10 ? x.toFixed(1) : fmt(Math.round(x)));
   const pct = (x) => (x < 1 ? '<1%' : x > 99 ? '>99%' : `${Math.round(x)}%`);
   return `<details class="mykc-loot" open><summary>Expected loot by your ${fmt(kc)} kills</summary><div class="loot-rows">` +
-    drops.map((d) => `<div class="loot"><a href="${wikiHref(d.item)}">${escapeHtml(d.item)}${owned && owned[d.item] ? ' <span class="loot-own">in bank</span>' : ''}</a><span class="dim">${escapeHtml(d.rate)}</span>
-      <span><b>${exp(kc * d.p)}</b> expected</span><span class="dim">${pct((1 - Math.pow(1 - d.p, kc)) * 100)} would have one</span></div>`).join('') +
-    `</div></details>`;
+    drops.map((d) => {
+      const chance = (1 - Math.pow(1 - d.p, kc)) * 100;
+      const got = !!(logged && logged[d.item]);
+      const [word, cls] = logged ? luckTag(chance, got) : [null, null];
+      return `<div class="loot"><a href="${wikiHref(d.item)}">${escapeHtml(d.item)}${got ? ' <span class="loot-own logged">logged</span>' : ''}${owned && owned[d.item] ? ' <span class="loot-own">in bank</span>' : ''}</a><span class="dim">${escapeHtml(d.rate)}</span>
+      <span><b>${exp(kc * d.p)}</b> expected</span><span class="dim">${pct(chance)} would have one${word ? ` <span class="luck ${cls}">${word}</span>` : ''}</span></div>`;
+    }).join('') +
+    `</div>${logged ? '<p class="dim loot-note">Luck is judged at your current kill count; the game doesn\'t record the kill count each drop came at.</p>' : ''}</details>`;
 }
 
 window.showMyKc = async function (title) {
@@ -838,6 +907,8 @@ window.showMyKc = async function (title) {
   const [p, pets, drops] = await Promise.all([api.player(state.me), api.pet_rates().catch(() => ({})),
     api.rare_drops(title).catch(() => [])]);
   const owned = drops && drops.length ? await api.bank_has(drops.map((d) => d.item)) : null;
+  const logged = new Set(((p && p.clog && p.clog.items) || []).map((n) => n.toLowerCase()));
+  const loggedMap = drops && drops.length && p && p.clog ? Object.fromEntries(drops.map((d) => [d.item, logged.has(d.item.toLowerCase())])) : null;
   const petFor = Object.fromEntries(Object.entries(pets || {}).map(([k, v]) => [k.toLowerCase(), v]));
   if (!p || p.error || nav.stack[nav.idx].title !== title) return;
   const t = title.toLowerCase();
@@ -852,8 +923,8 @@ window.showMyKc = async function (title) {
     const label = hits.length > 1 || KC_PAGES[a.name] ? `${escapeHtml(a.name)}: ` : '';
     return `<span class="mykc-item">${label}<b>${fmt(a.score)}</b>${a.name.includes('Clue') || a.name.includes('Rank') || a.name.includes('Zeal') || a.name.includes('Glory') || a.name.includes('Points') || a.name.includes('Logged') || a.name.includes('Rifts') ? '' : ' kills'}
       <span class="dim">· rank #${fmt(a.rank)}</span>${g > 0 ? ` <span class="gain">+${fmt(g)} this week</span>` : ''}</span>`;
-  }).join('') + hits.map((a) => (petFor[a.name.toLowerCase()] ? petLuckHtml(a, petFor[a.name.toLowerCase()]) : '')).join('') +
-    (hits.length === 1 && !KC_PAGES[hits[0].name] ? lootHtml(hits[0].score, drops, owned) : '');   // one boss = one kill count to go on
+  }).join('') + hits.map((a) => { const pet = petFor[a.name.toLowerCase()]; return pet ? petLuckHtml(a, pet, logged.has(pet.pet.toLowerCase())) : ''; }).join('') +
+    (hits.length === 1 && !KC_PAGES[hits[0].name] ? lootHtml(hits[0].score, drops, owned, loggedMap) : '');   // one boss = one kill count to go on
   const h1 = article.querySelector('h1');
   if (h1) h1.after(box); else article.prepend(box);
 };

@@ -89,6 +89,12 @@ const API = {
   },
   clear_bank: async (rsn) => { window.__BANK = null; return { rsn, imported: false }; },
   bank_info: async (rsn) => (window.__BANK ? { rsn, imported: true, updated: window.__BANK_UPDATED || Date.now() / 1000, different: Object.keys(window.__BANK).length } : { rsn, imported: false }),
+  clog_has: async (names) => {
+    const p = window.__PROFILE.player;
+    if (!p.clog) return null;
+    const got = new Set(p.clog.items.map((n) => n.toLowerCase()));
+    return Object.fromEntries(names.map((n) => [n, got.has(n.toLowerCase())]));
+  },
   set_progress: async (t) => (window.__BANK ? clone(((window.__PROFILE.setProgress || {})[t]) || []) : null),
   bank_has: async (names, generic) => {
     if (!window.__BANK) return null;

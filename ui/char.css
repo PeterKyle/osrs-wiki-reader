@@ -421,3 +421,23 @@
 /* old bank import */
 .bank-stale { margin: 6px 0 2px; padding: 6px 10px; border-radius: var(--r-md); font-size: 12.5px; color: var(--accent); background: var(--accent-soft); }
 .bank-stale-inline { color: var(--accent); font-size: 12px; }
+
+/* collection log */
+.clog-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.clog-top b { font: 600 20px var(--font-display); color: var(--text); }
+.clog-top .gtrack { flex: 1 1 200px; }
+.clog-pets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
+.pet-own { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: var(--r-full); font-size: 12.5px;
+  color: var(--success); background: rgba(80, 170, 100, .12); text-decoration: none; }
+.pet-own .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+.pets-owned { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 13px; color: var(--text-2); }
+.clog-note { margin: 8px 0 4px; font-size: 12px; }
+.luck .ic { width: 11px; height: 11px; stroke-width: 2.8; vertical-align: -1px; margin-right: 2px; }
+.loot-own.logged { color: var(--accent); background: var(--accent-soft); }
+.inbank-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.inbank-row .inbank { margin: 0; }
+
+/* luck on drops you have */
+.luck.lucky { color: #6fb7ff; background: rgba(90, 160, 240, .16); }
+.loot .luck { margin-left: 6px; }
+.loot-note { margin: 6px 0 0; font-size: 11.5px; }

@@ -180,6 +180,23 @@ const S = {
     return { set: row ? row.firstElementChild.textContent.replace(/\s+/g, ' ').trim() : null,
       stale: (($id('pxBank').querySelector('.bank-stale') || {}).textContent || '').trim() };
   },
+  async clog() {
+    state.me = 'Clyde Lives';
+    for (const m of ['save_account', 'set_me']) { const real = api[m]; api[m] = async (...a) => ({ ...(await real(...a)), me: 'Clyde Lives' }); }
+    await openCharacter('Clyde Lives'); await wait(1300);
+    const card = (($id('pxClog') || {}).textContent || '').replace(/\s+/g, ' ');
+    // pretend Clyde has Pet Kraken, to check the "you have it" paths
+    window.__PROFILE.player.clog.items.push('Pet Kraken');
+    await openCharacter('Woox'); await wait(400); await openCharacter('Clyde Lives'); await wait(1300);
+    const ownedChip = (($id('pxPets').querySelector('.pets-owned') || {}).textContent || '').trim();
+    const oddsHasKraken = [...$id('pxPets').querySelectorAll('.goal .gn b')].some((b) => b.textContent === 'Pet Kraken');
+    await openPage('Kraken'); await wait(1200);
+    const petLine = ((els.article.querySelector('.mykc-pet') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+    const tentacle = ((els.article.querySelector('.mykc-loot .loot a') || {}).textContent || '').trim();
+    await openPage('Abyssal whip'); await wait(900);
+    const itemChips = [...els.article.querySelectorAll('.inbank-row .inbank')].map((x) => x.textContent.trim());
+    return { card: card.includes('275 / 1,721 slots'), ownedChip, oddsHasKraken, petLine, tentacle, itemChips };
+  },
   async pets() {
     await openCharacter('Clyde Lives'); await wait(1500);
     const box = $id('pxPets'); box.scrollIntoView(); els.scroller.scrollTop -= 80; await wait(300);

@@ -74,6 +74,7 @@ function renderCompare(pa, pb) {
     ['EHP', pa.wom && Math.round(pa.wom.ehp), pb.wom && Math.round(pb.wom.ehp)],
     ['EHB', pa.wom && Math.round(pa.wom.ehb), pb.wom && Math.round(pb.wom.ehb)],
     ['Quests done', qDone(pa), qDone(pb)],
+    ['Collection log', pa.clog && pa.clog.count, pb.clog && pb.clog.count],
   ].filter(([, x, y]) => x != null || y != null);
 
   let aLead = 0, bLead = 0, ties = 0, maxDiff = 1;
