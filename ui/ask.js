@@ -121,8 +121,9 @@ async function send(question) {
   addBubble('user', question);
   const thinking = document.createElement('div');
   thinking.className = 'msg ai thinking';
-  thinking.innerHTML = '<span class="dots"><i></i><i></i><i></i></span> Reading the wiki…';
+  thinking.innerHTML = '<span class="dots"><i></i><i></i><i></i></span> <span class="status">Reading the wiki…</span>';
   chat.body.appendChild(thinking);
+  chat.pending = thinking;
   scrollChat();
   let r;
   try {
@@ -131,6 +132,7 @@ async function send(question) {
     r = { error: 'Something went wrong sending that. Please try again.' };
   } finally {
     thinking.remove();
+    chat.pending = null;
     chat.busy = false;   // never leave the chat stuck if a request fails
   }
   if (r.needKey) { showSetup(r.error); return; }
@@ -151,6 +153,20 @@ async function send(question) {
     toast(`Opened ${r.open.title}${r.open.anchor ? ' → ' + r.open.anchor : ''}. Press ✦ to go back to the chat.`);
   }
 }
+
+// Called from Python while an answer is on its way
+window.askStatus = function (text) {
+  const s = chat.pending && chat.pending.querySelector('.status');
+  if (s) s.textContent = text;
+};
+window.askStream = function (text) {
+  const el = chat.pending;
+  if (!el) return;
+  const nearBottom = chat.body.scrollHeight - chat.body.scrollTop - chat.body.clientHeight < 60;
+  el.classList.remove('thinking');
+  el.innerHTML = `<div class="wiki md">${renderMarkdown(text.replace(/^\s*\**\s*OPEN:.*$/gm, ''))}</div>`;
+  if (nearBottom) scrollChat();
+};
 
 function autoGrow() {
   chat.input.style.height = 'auto';

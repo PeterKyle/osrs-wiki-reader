@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -61,6 +62,12 @@ STOPWORDS = set(
     "way ways need needed it its it's this that these those there here any some much many more most than then so if "
     "into about as up out lvl please tell explain ok okay thanks thank next instead also else then just really "
     "now there's".split())
+def nice_model(name):
+    """'models/gemini-3.5-flash-lite' -> '3.5 Flash-Lite'"""
+    m = re.search(r"gemini-([\d.]+)-flash(-lite)?", name)
+    return f"{m.group(1)} Flash{'-Lite' if m.group(2) else ''}" if m else name.split("/")[-1]
+
+
 FOLLOW_UP = re.compile(r"^\s*(and|but|so|also|ok|okay|then|what about|how about|what if|same)\b"
                        r"|\b(instead|it|that|them|this one|those)\b", re.I)
 SKILLS = ["Attack", "Hitpoints", "Mining", "Strength", "Agility", "Smithing", "Defence", "Herblore", "Fishing",
@@ -879,6 +886,11 @@ class Api:
                 if p not in phrases:
                     phrases.append(p)
         multi, single = [], []
+        # "how do I level sailing" -> the wiki's "Sailing training" guide is the page that answers it
+        if re.search(r"\b(level|levels|leveling|levelling|train|training|xp|exp|experience|99)\b", question, re.I):
+            for skill in SKILLS:
+                if re.search(rf"\b{skill}\b", question, re.I):
+                    phrases.insert(0, f"{skill.lower()} training")
         titles = [p[0].upper() + p[1:] for p in phrases][:50]
         if titles:
             q = api_get(action="query", titles="|".join(titles), redirects=1)["query"]
@@ -891,13 +903,15 @@ class Api:
                 if t2 in exists and t2 not in multi + single and "disambiguation" not in t2:
                     (multi if " " in t.strip() else single).append(t2)
         pages = multi[:3] if multi else single[:2]   # one-word pages ("Fire", "Cape") only if nothing better matched
-        keywords = " ".join(t for t in toks if t not in STOPWORDS)
-        if keywords and len(pages) < 3:
+        words = [t for t in toks if t not in STOPWORDS]
+        if words and len(pages) < 3:
             league = "league" in question.lower()
-            for r in api_get(action="query", list="search", srsearch=keywords, srlimit=6, srprop="")["query"]["search"]:
-                t = r["title"]
-                if t not in pages and (league or "League" not in t):
-                    pages.append(t)
+            found = [r["title"] for r in api_get(action="query", list="search", srsearch=" ".join(words), srlimit=6,
+                                                   srprop="")["query"]["search"]
+                     if r["title"] not in pages and (league or "League" not in r["title"])]
+            # keep search hits whose title shares a real word with the question ("Cooking" for a Sailing question is noise)
+            related = [t for t in found if any(len(w) >= 4 and w.rstrip("s") in t.lower() for w in words)]
+            pages += related or (found[:2] if not pages else [])
         return pages[:3]
 
     def _page_text(self, title):
@@ -967,40 +981,111 @@ class Api:
         if not ready:
             return {"error": f"All the free Gemini models are at their limit right now. The next one frees up in about "
                              f"{self._wait_text(min(skip.values()) - now)}. It never charges you."}
-        limited = False
-        for model in ready[:8]:
-            try:
-                status, data = self._gemini_call(f"/{model}:generateContent", key, self._cfg.get("gemini_auth"),
-                                                 body=body, timeout=60)
-            except Exception as e:
-                return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
-            if status in (429, 403, 404, 500, 503):   # quota used up / model not available: try the next one
-                if status == 429:
-                    limited = True
-                    skip[model] = self._quota_reset(data, now)
-                elif status in (403, 404):
-                    skip[model] = now + 3 * 86400
+        limited, busy, offline = False, False, None
+        deadline = now + 120
+        for i, model in enumerate(ready[:8]):
+            if time.time() > deadline:
+                break
+            if i:
+                self._ask_status(f"{nice_model(ready[i - 1])} is busy, trying {nice_model(model)}…")
+            else:
+                self._ask_status(f"Asking {nice_model(model)}…")
+            status, data, text = self._gemini_stream(model, key, body)
+            if status == "offline":
+                offline = data
+                break
+            if status in ("timeout", 500, 502, 503, 504):  # overloaded or hung: rest it a few minutes, try the next
+                busy = True
+                skip[model] = time.time() + 180
+            elif status == 429:                           # free quota used up for now / for today
+                limited = True
+                skip[model] = self._quota_reset(data, time.time())
+            elif status in (403, 404):                    # not available to this key
+                skip[model] = time.time() + 3 * 86400
+            if status != 200:
                 self._cfg["gemini_skip"] = skip
                 save_config(self._cfg)
-                continue
-            if status != 200 or not isinstance(data, dict):
+                if status in ("timeout", 429, 403, 404, 500, 502, 503, 504):
+                    continue
                 msg = ((data or {}).get("error") or {}).get("message", "") if isinstance(data, dict) else ""
                 return {"error": f"Gemini returned an error: {msg or 'HTTP ' + str(status)}"}
-            cands = data.get("candidates") or []
-            parts = ((cands[0].get("content") or {}).get("parts") or []) if cands else []
-            text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
             if not text:
-                reason = (cands[0].get("finishReason") if cands else None) or (data.get("promptFeedback") or {}).get("blockReason")
-                return {"error": f"Gemini didn't give an answer ({reason or 'empty response'}). Try rephrasing."}
+                return {"error": f"Gemini didn't give an answer ({data or 'empty response'}). Try rephrasing."}
             self._gemini_model = model.split("/")[-1]
             text, open_page = self._take_open_command(text)
             return {"answer": text, "sources": [p["title"] for p in pages], "model": self._gemini_model,
                     "open": open_page}
+        if offline:
+            return {"error": f"Couldn't reach Google ({offline}). Check your connection."}
+        if busy and not limited:
+            return {"error": "Google's Gemini models are overloaded right now (this happens at busy times). "
+                             "Try again in a few minutes."}
         if limited:
             soonest = min(skip.values(), default=now + 60)
             return {"error": f"All the free Gemini models are at their limit right now. The next one frees up in about "
                              f"{self._wait_text(soonest - now)}. It never charges you."}
         return {"error": "Gemini is busy or unavailable right now. Try again in a moment."}
+
+    def _ask_status(self, text):
+        try:
+            self._window.evaluate_js(f"window.askStatus && askStatus({json.dumps(text)})")
+        except Exception:
+            pass
+
+    def _gemini_stream(self, model, key, body, quiet=20, think_low=True):
+        """Streams one answer, showing it in the chat as it arrives. A model that sends nothing for `quiet`
+        seconds counts as hung. Returns (status, error_json_or_reason, text): status is 200, an HTTP code,
+        "timeout" or "offline"."""
+        req_body = dict(body)
+        if think_low and re.search(r"gemini-[3-9]", model):     # 3.x+ models: think less, answer faster
+            req_body["generationConfig"] = {**body.get("generationConfig", {}), "thinkingConfig": {"thinkingLevel": "low"}}
+        auth = self._cfg.get("gemini_auth")
+        url = f"{GEMINI}/{model}:streamGenerateContent?alt=sse"
+        headers = {"User-Agent": USER_AGENT, "Content-Type": "application/json"}
+        if auth == "query":
+            url += "&key=" + urllib.parse.quote(key)
+        elif auth == "bearer":
+            headers["Authorization"] = "Bearer " + key
+        else:
+            headers["x-goog-api-key"] = key
+        req = urllib.request.Request(url, data=json.dumps(req_body).encode(), method="POST", headers=headers)
+        text, reason, last_push = "", None, 0.0
+        try:
+            with urllib.request.urlopen(req, timeout=quiet) as resp:
+                for raw in resp:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    chunk = json.loads(line[5:])
+                    for c in chunk.get("candidates") or []:
+                        for p in (c.get("content") or {}).get("parts") or []:
+                            if not p.get("thought"):
+                                text += p.get("text", "")
+                        reason = c.get("finishReason") or reason
+                    reason = reason or (chunk.get("promptFeedback") or {}).get("blockReason")
+                    if text and time.time() - last_push > 0.25:
+                        last_push = time.time()
+                        try:
+                            self._window.evaluate_js(f"window.askStream && askStream({json.dumps(text)})")
+                        except Exception:
+                            pass
+        except urllib.error.HTTPError as e:
+            try:
+                err = json.loads(e.read() or b"{}")
+            except ValueError:
+                err = {}
+            if e.code == 400 and think_low and "thinking" in json.dumps(err).lower():
+                return self._gemini_stream(model, key, body, quiet, think_low=False)  # model rejects it: retry without
+            return e.code, err, ""
+        except (TimeoutError, socket.timeout):
+            return ("timeout", None, "") if not text else (200, reason, text.strip())
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, (TimeoutError, socket.timeout)):
+                return "timeout", None, ""
+            return "offline", e.reason.__class__.__name__, ""
+        except (OSError, ValueError) as e:
+            return ("offline", e.__class__.__name__, "") if not text else (200, reason, text.strip())
+        return 200, reason, text.strip()
 
     def _take_open_command(self, text):
         """Strips an "OPEN: Page#Section" line from the answer; returns (answer, {title, anchor} or None).
