@@ -398,7 +398,30 @@ function updateDock() {
     document.documentElement.style.setProperty('--ask-w', w + 'px');
   }
   document.body.classList.toggle('ask-docked', docked);
+  // too narrow to share: the chat becomes a bar at the bottom (closed) or a sheet from the bottom (open)
+  const narrow = !docked && !isMini() && window.innerWidth < DOCK.minW + DOCK.minPage;
+  document.body.classList.toggle('ask-narrow', narrow);
+  askBar.hidden = !narrow || !chat.pop.hidden;
 }
+const askBar = $('askBar');
+const askBarInput = $('askBarInput');
+askBar.onsubmit = async (e) => {
+  e.preventDefault();
+  const q = askBarInput.value.trim();
+  await openAsk();
+  if (!q) return;
+  askBarInput.value = '';
+  if ((await api.gemini_status()).hasKey) send(q); else chat.input.value = q;   // asked before connecting: keep it
+};
+$('askBarOpen').onclick = () => openAsk();
+$('askBarHist').onclick = async (e) => { e.stopPropagation(); await openAsk(); openHistMenu(); };
+askBarInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') askBarInput.blur(); });
+$('askGrab').onclick = () => closeAsk();
+// tapping the page folds the sheet back into the bar
+document.addEventListener('mousedown', (e) => {
+  if (document.body.classList.contains('ask-narrow') && !chat.pop.hidden && e.target.closest('.scroller')) closeAsk();
+});
+updateDock();
 window.addEventListener('resize', updateDock);
 const askResize = $('askResize');
 askResize.addEventListener('pointerdown', (e) => {

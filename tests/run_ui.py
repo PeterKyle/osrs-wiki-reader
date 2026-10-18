@@ -55,6 +55,13 @@ SCENARIOS = [
                  "pageRight": lambda v, r: abs(v - r["askLeft"]) <= 1}),
     # 640px: too narrow to share, so the chat floats over the page
     dict(name="dock_narrow", mode="dock", size=(640, 1000), expect={"askOpen": True, "docked": False}),
+    # 640px: the Ask bar at the bottom; asking opens the chat as a sheet from the bottom; tapping the page folds it
+    dict(name="askbar", mode="askbar", size=(640, 900),
+         expect={"before": {"bar": True, "pop": False, "narrow": True},
+                 "open": {"bar": False, "pop": True, "msgs": 2, "atBottom": True, "emptied": True}}),
+    dict(name="askbar_fold", mode="askbar", size=(640, 900), params={"fold": 1},
+         expect={"folded": {"bar": True, "pop": False}}),
+    dict(name="askbar_wide", mode="askbar", size=(1300, 900), expect={"before": {"bar": False, "pop": False, "narrow": False}}),
     # quest guide table beside the docked chat: the page column is < 820px, so tables use the compact style
     dict(name="table", mode="table", size=(1118, 1000),
          expect={"view": "article", "page": "Optimal quest guide", "docked": True, "compact": True}),

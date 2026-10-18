@@ -10,6 +10,7 @@ window.isMini = () => mini;
 async function setMini(on) {
   mini = on;
   document.body.classList.toggle('mini', on);
+  if (window.updateDock) updateDock();   // the small-window Ask bar hides in mini mode
   closePops();
   hideSuggest();
   miniBox.hidden = true;

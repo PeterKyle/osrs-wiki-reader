@@ -133,6 +133,7 @@
 
   <section class="ask-pop" id="askPop" hidden>
     <div class="ask-resize" id="askResize" title="Drag to resize"></div>
+    <button class="ask-grab" id="askGrab" title="Fold the chat away (Esc)" aria-label="Fold the chat away"></button>
     <header class="ask-head">
       <span class="wom wom-md"><img src="https://oldschool.runescape.wiki/images/Wise_Old_Man_chathead.png" alt="" onerror="this.parentNode.classList.add('fallback')"><svg class="ic"><use href="#i-spark"/></svg></span>
       <div class="ask-title">Wise Old Man<span id="askModel">AI assistant</span></div>
@@ -159,6 +160,14 @@
       </div>
     </form>
   </section>
+
+  <!-- small windows: the chat waits here as a bar, and opens into a sheet when you ask -->
+  <form class="ask-bar" id="askBar" hidden>
+    <button type="button" class="ask-bar-open" id="askBarOpen" title="Open the chat"><span class="wom wom-xs"><img src="https://oldschool.runescape.wiki/images/Wise_Old_Man_chathead.png" alt="" onerror="this.parentNode.classList.add('fallback')"><svg class="ic"><use href="#i-spark"/></svg></span></button>
+    <input id="askBarInput" placeholder="Ask the Wise Old Man…" autocomplete="off" spellcheck="true">
+    <button type="button" class="fbtn" id="askBarHist" title="Chat history"><svg class="ic"><use href="#i-history"/></svg></button>
+    <button type="submit" class="ask-send" title="Ask"><svg class="ic"><use href="#i-send"/></svg></button>
+  </form>
 
   <button class="sel-ask" id="askSelBtn" hidden>
     <span class="wom wom-xs"><img src="https://oldschool.runescape.wiki/images/Wise_Old_Man_chathead.png" alt="" onerror="this.parentNode.classList.add('fallback')"><svg class="ic"><use href="#i-spark"/></svg></span>

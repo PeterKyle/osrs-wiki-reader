@@ -365,6 +365,21 @@ const S = {
     if (QS.get('w')) { askW = +QS.get('w'); updateDock(); await wait(100); }
     return { askLeft: rect(chat.pop).left, askWidth: rect(chat.pop).width, pageRight: rect(els.scroller).right, msgs: msgCount() };
   },
+  async askbar() {   // small window: the chat waits as a bar at the bottom, asking opens it as a sheet, tapping the page folds it
+    const still = document.createElement('style');   // headless Edge doesn't advance animations: the sheet would stay mid-slide
+    still.textContent = '*, *::before, *::after { animation: none !important; }';
+    document.head.append(still);
+    await openPage('Abyssal whip'); await wait(400);
+    const bar = $id('askBar');
+    const before = { bar: visible(bar), pop: visible(chat.pop), narrow: document.body.classList.contains('ask-narrow') };
+    $id('askBarInput').value = 'How do I get a fire cape?';
+    bar.requestSubmit(); await wait(700);
+    const r = chat.pop.getBoundingClientRect();
+    const open = { bar: visible(bar), pop: visible(chat.pop), msgs: msgCount(), atBottom: Math.abs(r.bottom - innerHeight) <= 1 && r.left <= 1 && Math.abs(r.right - innerWidth) <= 1,
+      emptied: $id('askBarInput').value === '' };
+    if (QS.get('fold')) { els.scroller.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await wait(300); }
+    return { before, open, folded: { bar: visible(bar), pop: visible(chat.pop) } };
+  },
   async hist() {   // two questions, Ctrl+N, a third question, then the history menu (?menu=1) or load the older chat (?load=1)
     await openPage('Abyssal whip'); await wait(400); await openChat();
     await send('How do I get a fire cape?'); await wait(200);
