@@ -32,7 +32,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -401,7 +401,8 @@ DEFAULTS = {
     "hotkey": "Ctrl+Alt+W",  # display label, or "Off"
     "hotkey_spec": None,     # [modifiers, virtual key]; None = look the label up in HOTKEYS
     "tour_seen": False,
-    "gim_groups": {},        # account name (lower case) -> its Group Ironman group name      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
+    "gim_groups": {},
+    "goal": None,            # the goal pinned to the home screen: {rsn, type: level|xp|kills, name, target, label}        # account name (lower case) -> its Group Ironman group name      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
     "ask_hotkey": "Ctrl+Alt+Q",          # opens the Wise Old Man chat
     "ask_hotkey_spec": [0x0001 | 0x0002, 0x51],
     "recent": [],
@@ -584,6 +585,7 @@ def fetch_wom(name):
         gains = {
             "startsAt": gained.get("startsAt"),
             "skills": {k: v["experience"]["gained"] for k, v in gained["data"]["skills"].items()},
+            "levels": {k: v["level"]["gained"] for k, v in gained["data"]["skills"].items()},
             "bosses": {k: v["kills"]["gained"] for k, v in gained["data"]["bosses"].items()},
         }
     return {
@@ -792,6 +794,7 @@ class Api:
         self._chats_lock = threading.Lock()
         self._extras, self._gim, self._img, self._update = {}, {}, {}, None
         self._pets = self._facts = None
+        self._reqs = {}
         self._notifier = None
         self._mini = False
         self._full_rect = None
@@ -1786,6 +1789,56 @@ class Api:
             self._facts = (time.time(), facts)
         return facts
 
+    def set_goal(self, goal):
+        """Pins one goal to the home screen (or unpins it with None)."""
+        if goal is not None:
+            if not isinstance(goal, dict) or goal.get("type") not in ("level", "xp", "kills"):
+                return self.get_state()
+            try:
+                goal = {"rsn": str(goal["rsn"])[:12], "type": goal["type"], "name": str(goal["name"])[:60],
+                        "target": int(goal["target"]), "label": str(goal.get("label") or "")[:80]}
+            except (KeyError, TypeError, ValueError):
+                return self.get_state()
+        self._cfg["goal"] = goal
+        save_config(self._cfg)
+        return self.get_state()
+
+    # ---- article pages: what you need for this monster / spell ----
+    def page_requirements(self, title):
+        """Slayer level (and who assigns it) for monsters, Magic level and spellbook for spells. {} if neither."""
+        title = (title or "").strip()[:250]
+        with self._mem_lock:
+            hit = self._reqs.get(title)
+        if hit is not None:
+            return hit
+        esc = title.replace("\\", "\\\\").replace("'", "\'")
+        out = {}
+        try:
+            rows = self._bucket(f"bucket('infobox_monster').select('page_name','slayer_level','assigned_by')"
+                                f".where('page_name','{esc}').limit(5).run()")
+            lv = max((r.get("slayer_level") or 0 for r in rows), default=0)
+            masters = sorted({m for r in rows for m in (r.get("assigned_by") or []) if isinstance(m, str)}, key=str.lower)
+            if lv > 1 or masters:
+                out["monster"] = {"slayer": lv, "assignedBy": [m[:1].upper() + m[1:] for m in masters]}
+        except Exception:
+            pass
+        try:
+            rows = self._bucket(f"bucket('infobox_spell').select('page_name','json','spellbook')"
+                                f".where('page_name','{esc}').limit(1).run()")
+            if rows:
+                j = rows[0].get("json")
+                j = json.loads(j) if isinstance(j, str) else (j or {})
+                level = int(str(j.get("level") or "0").split()[0] or 0)
+                if level:
+                    out["spell"] = {"level": level, "spellbook": str(j.get("spellbook") or rows[0].get("spellbook") or "").title()}
+        except Exception:
+            pass
+        with self._mem_lock:
+            self._reqs[title] = out
+            if len(self._reqs) > 200:
+                self._reqs.pop(next(iter(self._reqs)))
+        return out
+
     # ---- home: the newest game update from the wiki ----
     def latest_update(self):
         if self._update and time.time() - self._update[0] < 3600:
@@ -1995,6 +2048,7 @@ class Api:
             "hotkeyOk": self._hotkey_ok,
             "askHotkey": self._cfg["ask_hotkey"],
             "guideSeen": bool(self._cfg.get("tour_seen")),
+            "goal": self._cfg.get("goal"),
             "hotkeyTypes": self._hk_types["show"],
             "askHotkeyTypes": self._hk_types["ask"],
             "askHotkeyOk": self._ask_hotkey_ok,

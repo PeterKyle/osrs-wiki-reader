@@ -96,6 +96,25 @@ const S = {
     const second = (document.querySelector('#homeFact .fact-card p') || {}).textContent || '';
     return { update: c ? c.textContent : null, fact: !!fact, anotherFactIsDifferent: !!second && second !== first };
   },
+  async cando() {
+    state.me = 'Clyde Lives';
+    await openPage('Abyssal demon'); await wait(1000);
+    const parts = () => [...(els.article.querySelector('.cando') || { children: [] }).children].map((x) => x.textContent.trim()).join(' | ');
+    const slayer = parts();
+    await openPage('Ice Barrage'); await wait(1000);
+    const magic = parts();
+    return { slayer: slayer.replace(/\s+/g, ' ').trim(), magic: magic.replace(/\s+/g, ' ').trim() };
+  },
+  async homegoal() {
+    state.me = 'Clyde Lives';
+    await openCharacter('Clyde Lives'); await wait(1200);
+    els.char.querySelector('.goals .pin-goal').click(); await wait(500);
+    const pinnedOn = els.char.querySelector('.goals .pin-goal').classList.contains('on');
+    state.me = 'Clyde Lives';   // the fake backend's saved state names another account as "you"
+    goHome(); await wait(1200);
+    const g = document.querySelector('#homeGoal .upd-name'), r = document.querySelector('#homeRecap .recap-nums');
+    return { pinnedOn, goal: g ? g.textContent : null, recap: r ? r.textContent.replace(/\s+/g, ' ').trim() : null };
+  },
   async petluck() {
     state.me = 'Clyde Lives';
     await openPage('Kraken'); await wait(1200);

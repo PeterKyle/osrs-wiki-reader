@@ -77,6 +77,8 @@ const API = {
   set_gim_group: async () => clone(window.__PROFILE.gim),
   latest_update: async () => clone(window.__PROFILE.update),
   pet_rates: async () => clone(window.__PROFILE.pets),
+  page_requirements: async (t) => clone((window.__PROFILE.reqs || {})[t] || {}),
+  set_goal: async (g) => { __st.goal = g; return state(); },
   fun_facts: async () => clone(window.__PROFILE.facts),
   image_data: async () => ({}),
   copy_image: async () => ({ ok: true }),

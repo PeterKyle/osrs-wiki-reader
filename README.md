@@ -57,7 +57,8 @@ The Wise Old Man uses Google's Gemini with **your own free key**. It takes about
   - Your Group Ironman group, with every member's levels.
   - **Share**: a picture of your profile to paste into Discord.
 - **Your kill count on boss pages**: open a boss, clue or minigame page and it shows your KC, rank and this week's kills, plus your pet luck (how many players would have the pet by your kill count).
-- **Home screen**: the latest game update, and a "Did you know?" fact from the wiki's Fun Facts series.
+- **Can I kill / cast this?** Monster pages show the Slayer level needed (and which masters assign it), spell pages the Magic level and spellbook, checked against your levels.
+- **Home screen**: your pinned goal (pin any goal from your profile), this week's XP, level-ups and boss kills, the latest game update, and a "Did you know?" fact from the wiki's Fun Facts series.
 - **Requirement checks**: set your account and quest, diary and guide pages tick off what you meet. The Character tab lists quests you can start now.
 - **XP calculator** on skill pages, with training methods from the wiki.
 - **Ask the Wise Old Man**: an AI helper (Google's Gemini) that answers from the matching wiki pages and your stats, with Ironman, Hardcore, Ultimate, Group and Hardcore Group Ironman modes, and can open wiki pages for you.

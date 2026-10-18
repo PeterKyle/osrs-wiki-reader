@@ -207,7 +207,7 @@
 .goal-top > div { flex: 1 1 120px; display: flex; flex-direction: column; padding: 10px 12px; border-radius: var(--r-md); background: var(--fill); }
 .goal-top b { font: 600 18px/1.2 var(--font-display); color: var(--text); }
 .goal-top span { font-size: 12px; color: var(--text-3); }
-.goal { display: grid; grid-template-columns: 20px minmax(110px, 170px) 1fr auto; align-items: center; gap: 10px; min-height: 30px; font-size: 13px; }
+.goal { display: grid; grid-template-columns: 20px minmax(110px, 170px) 1fr auto 26px; align-items: center; gap: 10px; min-height: 30px; font-size: 13px; }
 .goal img { width: 18px; height: 18px; object-fit: contain; }
 .goal .gn.wide { grid-column: 1 / 3; }
 .goal .gv { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -278,3 +278,35 @@
 .fact-card p { margin: 6px 0 10px; font-size: 14px; line-height: 1.6; color: var(--text); }
 .fact-actions { display: flex; align-items: center; gap: 14px; }
 .fact-actions .linkbtn { font-size: 13px; }
+
+/* pin a goal */
+.pin-goal { width: 26px; height: 26px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3); display: grid; place-items: center;
+  opacity: .45; transition: opacity var(--fast) var(--ease), background var(--fast) var(--ease), color var(--fast) var(--ease); }
+.pin-goal .ic { width: 14px; height: 14px; }
+.goal:hover .pin-goal, .pin-goal:focus-visible { opacity: 1; }
+.pin-goal:hover { background: var(--fill-hover); color: var(--text); }
+.pin-goal.on { opacity: 1; color: var(--accent); background: var(--accent-soft); }
+
+/* home: pinned goal + this week */
+#homeGoal, #homeRecap { margin-bottom: 8px; }
+.goal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 2px 0 8px; }
+.goal-head b { font: 600 17px var(--font-display); color: var(--accent); }
+.goal-head b.done { color: var(--success); }
+.gtrack.big { display: block; height: 9px; }
+.goal-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 12.5px; }
+.recap-nums { display: flex; gap: 10px; margin: 8px 0 10px; }
+.recap-nums > div { flex: 1; display: flex; flex-direction: column; padding: 8px 12px; border-radius: var(--r-md); background: var(--fill); }
+.recap-nums b { font: 600 18px/1.2 var(--font-display); color: var(--text); }
+.recap-nums span { font-size: 12px; color: var(--text-3); }
+.recap-top { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 8px; font-size: 13px; color: var(--text-2); }
+.recap-top span { display: inline-flex; align-items: center; gap: 6px; }
+.recap-top img { width: 16px; height: 16px; object-fit: contain; }
+.recap-top b { color: var(--success); font-weight: 600; }
+.recap-card p { margin: 6px 0 8px; font-size: 13px; }
+
+/* can you kill / cast this? */
+.cando { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 0 0 18px; padding: 9px 14px;
+  border-radius: var(--r-lg); background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font-size: 13.5px; }
+.cando .ok { display: inline-flex; align-items: center; gap: 6px; color: var(--success); font-weight: 500; }
+.cando .ok .ic { width: 14px; height: 14px; stroke-width: 2.4; }
+.cando .no { color: var(--danger); font-weight: 500; }

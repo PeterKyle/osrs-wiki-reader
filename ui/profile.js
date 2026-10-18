@@ -18,7 +18,7 @@ function goalsHtml(p) {
   const virtualTotal = skills.reduce((t, s) => t + virtualLevel(s.xp), 0);
   const ttm = p.wom && p.wom.ttm;
   const bar = (frac) => `<span class="gtrack"><span style="width:${Math.max(3, Math.min(100, frac * 100))}%"></span></span>`;
-  const row = (s, right, frac, extra = '') => `<div class="goal"><img src="${skillIcon(s.name)}" alt=""><span class="gn">${escapeHtml(s.name)}${extra}</span>${bar(frac)}<span class="gv">${right}</span></div>`;
+  const row = (s, right, frac, extra = '', goal = null) => `<div class="goal"><img src="${skillIcon(s.name)}" alt=""><span class="gn">${escapeHtml(s.name)}${extra}</span>${bar(frac)}<span class="gv">${right}</span>${pinButton(goal)}</div>`;
 
   let html = `<h2 class="home-h">Goals</h2><div class="c-card goals">`;
   html += `<div class="goal-top">`;
@@ -29,12 +29,14 @@ function goalsHtml(p) {
   if (virtualTotal > realTotal) html += `<div><b>${fmt(virtualTotal)}</b><span>virtual total level</span></div>`;
   html += `</div>`;
   if (closest99.length) {
-    html += `<h3>Closest 99s</h3>` + closest99.map((s) => row(s, `${fmtShort(XP_99 - s.xp)} XP left`, s.xp / XP_99, ` <span class="dim">${s.level}</span>`)).join('');
+    html += `<h3>Closest 99s</h3>` + closest99.map((s) => row(s, `${fmtShort(XP_99 - s.xp)} XP left`, s.xp / XP_99, ` <span class="dim">${s.level}</span>`,
+      { rsn: p.name, type: 'level', name: s.name, target: 99, label: `99 ${s.name}` })).join('');
   }
   if (nextLevels.length) {
     html += `<h3>Next level-ups</h3>` + nextLevels.map((s) => {
       const from = XP_TABLE[s.level], to = XP_TABLE[s.level + 1];
-      return row(s, `${fmt(to - s.xp)} XP`, (s.xp - from) / (to - from), ` <span class="dim">${s.level} → ${s.level + 1}</span>`);
+      return row(s, `${fmt(to - s.xp)} XP`, (s.xp - from) / (to - from), ` <span class="dim">${s.level} → ${s.level + 1}</span>`,
+        { rsn: p.name, type: 'level', name: s.name, target: s.level + 1, label: `${s.level + 1} ${s.name}` });
     }).join('');
   }
   const top = [...maxed].sort((a, b) => b.xp - a.xp)[0];
@@ -43,6 +45,127 @@ function goalsHtml(p) {
   }
   return html + `</div>`;
 }
+
+/* ---------------- pinned goal (shown on the home screen) ---------------- */
+
+const sameGoal = (a, b) => !!a && !!b && a.rsn.toLowerCase() === b.rsn.toLowerCase() && a.type === b.type && a.name === b.name && a.target === b.target;
+function pinButton(goal) {
+  if (!goal) return '<span></span>';
+  const on = sameGoal(goal, state.goal);
+  return `<button class="pin-goal${on ? ' on' : ''}" data-goal="${escapeHtml(JSON.stringify(goal))}" title="${on ? 'Unpin from the home screen' : 'Pin this goal to the home screen'}">${svgIcon('i-pin')}</button>`;
+}
+// Wise Old Man milestone -> a goal the hiscores can track (skill XP or boss kills; not "base 70 stats")
+function milestoneGoal(p, c) {
+  if (c.measure === 'experience' && c.metric !== 'overall') {
+    return { rsn: p.name, type: 'xp', name: metricName(c.metric), target: c.threshold, label: c.name };
+  }
+  if (c.measure === 'kills') {
+    const a = p.activities.find((x) => womKey(x.name) === c.metric);
+    if (a) return { rsn: p.name, type: 'kills', name: a.name, target: c.threshold, label: c.name };
+  }
+  return null;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('.pin-goal');
+  if (!b) return;
+  const goal = JSON.parse(b.dataset.goal);
+  const on = b.classList.contains('on');
+  state = await api.set_goal(on ? null : goal);
+  document.querySelectorAll('.pin-goal').forEach((x) => {
+    const pinned = !on && sameGoal(JSON.parse(x.dataset.goal), goal);
+    x.classList.toggle('on', pinned);
+    x.title = pinned ? 'Unpin from the home screen' : 'Pin this goal to the home screen';
+  });
+  toast(on ? 'Goal unpinned.' : `Pinned “${goal.label}” to your home screen.`);
+});
+
+// progress towards the pinned goal, from the hiscores
+function goalProgress(g, p) {
+  if (g.type === 'kills') {
+    const a = p.activities.find((x) => x.name === g.name);
+    const n = a ? Math.max(0, a.score) : 0;
+    return { frac: n / g.target, done: n >= g.target, detail: `${fmt(n)} / ${fmt(g.target)} kills` };
+  }
+  const s = p.skills.find((x) => x.name === g.name);
+  const xp = s ? Math.max(0, s.xp) : 0;
+  const need = g.type === 'level' ? XP_TABLE[g.target] : g.target;
+  const left = Math.max(0, need - xp);
+  return { frac: xp / need, done: left === 0,
+    detail: g.type === 'level' ? `Level ${s ? s.level : 1} → ${g.target} · ${fmt(left)} XP left` : `${fmtShort(xp)} / ${fmtShort(need)} XP · ${fmt(left)} left` };
+}
+
+window.renderPinnedGoal = async function () {
+  const box = $('homeGoal');
+  if (!box) return;
+  const g = state.goal;
+  if (!g) { box.hidden = true; box.innerHTML = ''; return; }
+  const p = await api.player(g.rsn);
+  if (!box.isConnected || !p || p.error) return;
+  const pr = goalProgress(g, p);
+  box.innerHTML = `<div class="c-card goal-card"><div class="upd-label">Pinned goal <span class="dim">· ${escapeHtml(p.name)}</span></div>
+    <div class="goal-head"><span class="upd-name">${escapeHtml(g.label)}</span><b class="${pr.done ? 'done' : ''}">${pr.done ? 'Reached!' : `${Math.floor(Math.min(1, pr.frac) * 100)}%`}</b></div>
+    <span class="gtrack big"><span style="width:${Math.max(2, Math.min(1, pr.frac) * 100)}%"></span></span>
+    <div class="goal-foot"><span class="dim">${pr.detail}</span><span><button class="linkbtn" id="goalOpen">Profile</button> · <button class="linkbtn" id="goalUnpin">Unpin</button></span></div></div>`;
+  box.hidden = false;
+  $('goalOpen').onclick = () => openCharacter(p.name);
+  $('goalUnpin').onclick = async () => { state = await api.set_goal(null); renderPinnedGoal(); };
+};
+
+/* ---------------- home: this week (your account) ---------------- */
+
+window.renderWeeklyRecap = async function () {
+  const box = $('homeRecap');
+  if (!box) return;
+  if (!state.me) { box.hidden = true; return; }
+  const p = await api.player(state.me);
+  if (!box.isConnected || !p || p.error || !p.wom || !p.wom.gains) { box.hidden = true; return; }
+  const g = p.wom.gains;
+  const total = g.skills.overall || 0;
+  const levels = (g.levels && g.levels.overall) || 0;
+  const kills = Object.values(g.bosses || {}).reduce((t, n) => t + Math.max(0, n), 0);
+  const top = SKILL_GRID.map((n) => [n, g.skills[n === 'Runecraft' ? 'runecrafting' : n.toLowerCase()] || 0]).filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  box.innerHTML = `<div class="c-card recap-card"><div class="upd-label">This week <span class="dim">· ${escapeHtml(p.name)}</span></div>
+    ${total > 0 ? `<div class="recap-nums"><div><b>+${fmtShort(total)}</b><span>XP</span></div><div><b>${fmt(levels)}</b><span>level-up${levels === 1 ? '' : 's'}</span></div><div><b>${fmt(kills)}</b><span>boss kill${kills === 1 ? '' : 's'}</span></div></div>
+      <div class="recap-top">${top.map(([n, x]) => `<span><img src="${skillIcon(n)}" alt="">${escapeHtml(n)} <b>+${fmtShort(x)}</b></span>`).join('')}</div>`
+      : '<p class="dim">No XP tracked yet this week. Press <b>Update</b> on your profile after playing.</p>'}
+    <button class="linkbtn" id="recapOpen">Open your profile</button></div>`;
+  box.hidden = false;
+  $('recapOpen').onclick = () => openCharacter(p.name);
+};
+
+/* ---------------- article pages: can you kill / cast this? ---------------- */
+
+window.showCanDo = async function (title) {
+  if (!state.me) return;
+  const [req, p] = await Promise.all([api.page_requirements(title), api.player(state.me)]);
+  const article = els.article;
+  if (!req || (!req.monster && !req.spell) || !p || p.error || article.hidden || nav.stack[nav.idx].title !== title || article.querySelector('.cando')) return;
+  const lvl = (n) => { const s = p.skills.find((x) => x.name === n); return s && s.xp >= 0 ? s.level : 1; };
+  const parts = [];
+  if (req.monster) {
+    const m = req.monster;
+    if (m.slayer > 1) {
+      const have = lvl('Slayer');
+      parts.push(have >= m.slayer
+        ? `<span class="ok">${svgIcon('i-check')}Slayer ${m.slayer}: you have ${have}</span>`
+        : `<span class="no">Needs ${m.slayer} Slayer: you have ${have} (${m.slayer - have} to go)</span>`);
+    }
+    if (m.assignedBy && m.assignedBy.length) parts.push(`<span class="dim">Assigned by ${m.assignedBy.map(escapeHtml).join(', ')}</span>`);
+  }
+  if (req.spell) {
+    const have = lvl('Magic');
+    const book = req.spell.spellbook ? ` (${escapeHtml(req.spell.spellbook)} spellbook)` : '';
+    parts.push(have >= req.spell.level
+      ? `<span class="ok">${svgIcon('i-check')}Magic ${req.spell.level}${book}: you have ${have}</span>`
+      : `<span class="no">Needs ${req.spell.level} Magic${book}: you have ${have} (${req.spell.level - have} to go)</span>`);
+  }
+  if (!parts.length) return;
+  const box = document.createElement('div');
+  box.className = 'cando';
+  box.innerHTML = parts.join('');
+  const after = article.querySelector('.mykc') || article.querySelector('h1');
+  if (after) after.after(box); else article.prepend(box);
+};
 
 /* ---------------- milestones & records (Wise Old Man) ---------------- */
 
@@ -63,7 +186,7 @@ async function renderExtras(p) {
   if ((x.closest || []).length) {
     html += `<h2 class="home-h">Almost there</h2><div class="c-card goals">` + x.closest.map((c) => `<div class="goal">
         <span class="gn wide">${escapeHtml(c.name)}</span>
-        <span class="gtrack"><span style="width:${Math.max(3, c.progress * 100)}%"></span></span><span class="gv">${Math.floor(c.progress * 100)}%</span></div>`).join('') + `</div>`;
+        <span class="gtrack"><span style="width:${Math.max(3, c.progress * 100)}%"></span></span><span class="gv">${Math.floor(c.progress * 100)}%</span>${pinButton(milestoneGoal(p, c))}</div>`).join('') + `</div>`;
   }
   const r = x.records || {};
   const periods = [['day', 'Best day'], ['week', 'Best week'], ['month', 'Best month'], ['year', 'Best year']].filter(([k]) => r[k] && r[k].overall);

@@ -130,6 +130,8 @@ function goHome(push = true) {
   closePops();
   renderRecent();
   if (window.renderHomeExtras) renderHomeExtras();
+  if (window.renderPinnedGoal) renderPinnedGoal();     // your pinned goal and this week: fresh each time you come home
+  if (window.renderWeeklyRecap) renderWeeklyRecap();
   els.pageTitle.textContent = '';
   show('home');
   els.scroller.scrollTop = 0;
@@ -241,6 +243,7 @@ function renderArticle(res) {
   if (window.showPrice) showPrice(res.title);
   if (window.showCalculator) showCalculator(res.title);
   if (window.showMyKc) showMyKc(res.title);
+  if (window.showCanDo) showCanDo(res.title);
   if (window.updateBookmarkBtn) updateBookmarkBtn();
 }
 
