@@ -59,7 +59,7 @@ function setupHtml(error = '') {
         <li>Copy the key and paste it here:</li>
       </ol>
       <form class="ask-keyform" id="askKeyForm">
-        <input id="askKey" type="password" placeholder="Paste your key (starts with AIza…)" autocomplete="off" spellcheck="false">
+        <input id="askKey" type="password" placeholder="Paste your whole key (starts with AQ. or AIza)" autocomplete="off" spellcheck="false">
         <button class="btn small" type="submit">Save</button>
       </form>
       ${error ? `<p class="ask-err">${escapeHtml(error)}</p>` : ''}
@@ -155,6 +155,22 @@ function closeAsk() {
   chat.pop.hidden = true;
   $('btnAsk').classList.remove('on');
 }
+
+// Daily question limit (Settings): an extra cap on top of Google's free tier
+const LIMIT_STEPS = [0, 10, 25, 50, 100, 200];
+function showAskLimit(st) {
+  $('askLimVal').textContent = st.limit ? st.limit : 'Off';
+  $('askUsed').textContent = `(${st.usedToday} used today)`;
+}
+async function stepAskLimit(dir) {
+  const st = await api.gemini_status();
+  const i = Math.max(0, LIMIT_STEPS.findIndex((v) => v >= (st.limit || 0)));
+  const next = LIMIT_STEPS[Math.max(0, Math.min(LIMIT_STEPS.length - 1, i + dir))];
+  showAskLimit(await api.set_ask_limit(next));
+}
+$('askLimDown').onclick = () => stepAskLimit(-1);
+$('askLimUp').onclick = () => stepAskLimit(1);
+$('btnSettings').addEventListener('click', async () => showAskLimit(await api.gemini_status()));
 
 $('btnAsk').onclick = () => (chat.pop.hidden ? openAsk() : closeAsk());
 $('askClose').onclick = closeAsk;

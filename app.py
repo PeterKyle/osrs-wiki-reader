@@ -101,6 +101,9 @@ DEFAULTS = {
     "alerts": [],     # [{"id", "name", "dir": "above"|"below", "price"}]
     "timers": [],     # [{"id", "label", "minutes", "ends" (epoch s), "notified"}]
     "gemini_key": None,  # Gemini API key, encrypted with Windows DPAPI (base64)
+    "gemini_auth": None,  # how Google accepted the key: "header" | "query" | "bearer"
+    "ask_limit": 50,      # max questions per day sent to Gemini (0 = no limit); a safety net on top of Google's free tier
+    "ask_used": [None, 0],  # [date, questions asked that day]
 }
 
 user32 = ctypes.windll.user32
@@ -787,9 +790,22 @@ class Api:
         except Exception:
             return None
 
-    def _gemini_models(self, key):
+    @staticmethod
+    def _gemini_call(path, key, auth, body=None, timeout=15):
+        """Gemini REST call. Newer AI Studio keys ("AQ.") aren't accepted the same way everywhere, so the key
+        can go in the documented x-goog-api-key header, the ?key= parameter, or as a Bearer token."""
+        url, headers = GEMINI + path, {}
+        if auth == "query":
+            url += ("&" if "?" in url else "?") + "key=" + urllib.parse.quote(key)
+        elif auth == "bearer":
+            headers["Authorization"] = "Bearer " + key
+        else:
+            headers["x-goog-api-key"] = key
+        return http_json(url, method="POST" if body is not None else "GET", body=body, headers=headers, timeout=timeout)
+
+    def _gemini_models(self, key, auth=None):
         """Stable Gemini Flash models this key can use, best first (names change often, so ask Google)."""
-        status, data = http_json(GEMINI + "/models?pageSize=200", headers={"x-goog-api-key": key})
+        status, data = self._gemini_call("/models?pageSize=200", key, auth or self._cfg.get("gemini_auth"))
         if status != 200 or not isinstance(data, dict):
             msg = ((data or {}).get("error") or {}).get("message", "") if isinstance(data, dict) else ""
             raise PermissionError(msg or f"HTTP {status}")
@@ -805,24 +821,36 @@ class Api:
         return names
 
     def gemini_status(self):
-        return {"hasKey": bool(self._cfg.get("gemini_key")), "model": getattr(self, "_gemini_model", None)}
+        day, used = self._cfg.get("ask_used") or [None, 0]
+        return {"hasKey": bool(self._cfg.get("gemini_key")), "model": getattr(self, "_gemini_model", None),
+                "limit": self._cfg.get("ask_limit"), "usedToday": used if day == time.strftime("%Y-%m-%d") else 0}
+
+    def set_ask_limit(self, n):
+        self._cfg["ask_limit"] = max(0, min(1000, int(n)))
+        save_config(self._cfg)
+        return self.gemini_status()
 
     def gemini_set_key(self, key):
         key = (key or "").strip()
-        if not re.fullmatch(r"[A-Za-z0-9_\-]{20,80}", key):
-            return {"error": "That doesn't look like a Gemini API key. It should be one long code, usually starting with \"AIza\"."}
-        try:
-            models = self._gemini_models(key)
-        except PermissionError as e:
-            return {"error": f"Google didn't accept that key: {e}"}
-        except Exception as e:
-            return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
-        if not models:
-            return {"error": "That key works, but no Gemini Flash models are available to it."}
-        self._gemini_list = models
-        self._cfg["gemini_key"] = protect_secret(key)
-        save_config(self._cfg)
-        return {"ok": True}
+        if not re.fullmatch(r"[A-Za-z0-9_.\-]{20,300}", key):
+            return {"error": "That doesn't look like a Gemini API key. Copy the whole key from AI Studio (it starts with \"AQ.\" or \"AIza\")."}
+        first_error = None
+        for auth in ("header", "query", "bearer"):
+            try:
+                models = self._gemini_models(key, auth)
+            except PermissionError as e:
+                first_error = first_error or str(e)
+                continue
+            except Exception as e:
+                return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
+            if not models:
+                return {"error": "That key works, but no Gemini Flash models are available to it."}
+            self._gemini_list = models
+            self._cfg["gemini_key"] = protect_secret(key)
+            self._cfg["gemini_auth"] = auth
+            save_config(self._cfg)
+            return {"ok": True}
+        return {"error": f"Google didn't accept that key: {first_error}"}
 
     def gemini_clear_key(self):
         self._cfg["gemini_key"] = None
@@ -879,6 +907,12 @@ class Api:
             return {"error": "Add your free Gemini key first.", "needKey": True}
         if not question:
             return {"error": "Type a question first."}
+        today = time.strftime("%Y-%m-%d")
+        day, used = self._cfg.get("ask_used") or [None, 0]
+        used = used if day == today else 0
+        limit = int(self._cfg.get("ask_limit") or 0)
+        if limit and used >= limit:
+            return {"error": f"You've used today's {limit} questions (your daily limit in Settings). It resets tomorrow."}
 
         try:
             pages = [self._page_text(t) for t in self._find_pages(question)]
@@ -907,11 +941,13 @@ class Api:
         except Exception as e:
             return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
 
+        self._cfg["ask_used"] = [today, used + 1]   # counted per question, even if Google turns it down
+        save_config(self._cfg)
         limited = False
         for model in models[:4]:
             try:
-                status, data = http_json(f"{GEMINI}/{model}:generateContent", method="POST", body=body,
-                                         headers={"x-goog-api-key": key}, timeout=60)
+                status, data = self._gemini_call(f"/{model}:generateContent", key, self._cfg.get("gemini_auth"),
+                                                 body=body, timeout=60)
             except Exception as e:
                 return {"error": f"Couldn't reach Google ({e.__class__.__name__}). Check your connection."}
             if status in (429, 404, 500, 503):     # free quota used up / model unavailable: try the next one
