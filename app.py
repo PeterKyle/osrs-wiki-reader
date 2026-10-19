@@ -34,7 +34,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.10.2"
+VERSION = "1.10.3"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -408,6 +408,7 @@ DEFAULTS = {
     "tour_seen": False,
     "gim_groups": {},
     "goal": None,
+    "volume": 100,           # videos and sound clips on wiki pages, 0-100
     "wom_auto": True,        # keep your account fresh on Wise Old Man (at most every 6 hours, only if it's tracked)
     "wom_auto_at": 0,            # the goal pinned to the home screen: {rsn, type: level|xp|kills, name, target, label}        # account name (lower case) -> its Group Ironman group name      # the guided tour runs once by itself (first launch, or after updating to 1.4.4)
     "ask_hotkey": "Ctrl+Alt+Q",          # opens the Wise Old Man chat
@@ -2886,6 +2887,7 @@ class Api:
             "guideSeen": bool(self._cfg.get("tour_seen")),
             "goal": self._cfg.get("goal"),
             "womAuto": bool(self._cfg.get("wom_auto", True)),
+            "volume": int(self._cfg.get("volume", 100)),
             "hotkeyTypes": self._hk_types["show"],
             "askHotkeyTypes": self._hk_types["ask"],
             "askHotkeyOk": self._ask_hotkey_ok,
@@ -2906,6 +2908,8 @@ class Api:
             self._cfg["recent"] = []
         elif key == "wom_auto":
             self._cfg["wom_auto"] = bool(value)
+        elif key == "volume":
+            self._cfg["volume"] = max(0, min(100, int(value)))
         elif key == "guide_seen":
             self._cfg["tour_seen"] = bool(value)
         save_config(self._cfg)

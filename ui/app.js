@@ -228,9 +228,26 @@ function fixMedia(root) {
     if (m.getAttribute('src')) m.setAttribute('src', abs(m.getAttribute('src')));
     m.querySelectorAll('source[src], track[src]').forEach((x) => x.setAttribute('src', abs(x.getAttribute('src'))));
     m.preload = 'none';
+    m.volume = mediaVolume();
     m.load();   // pick up the fixed addresses
   });
 }
+
+// Settings > Volume: one level for every video and sound clip on wiki pages (each player's own slider still works)
+const mediaVolume = () => Math.max(0, Math.min(100, state && state.volume != null ? state.volume : 100)) / 100;
+function renderVolume() {
+  const v = Math.round(mediaVolume() * 100);
+  $('volRange').value = v;
+  $('volVal').textContent = v ? v + '%' : 'Muted';
+  $('volRange').style.setProperty('--fill', v + '%');
+}
+$('volRange').addEventListener('input', () => {
+  state.volume = +$('volRange').value;
+  renderVolume();
+  els.article.querySelectorAll('video, audio').forEach((m) => (m.volume = mediaVolume()));   // players on screen too
+});
+$('volRange').addEventListener('change', async () => { state = await api.set_pref('volume', +$('volRange').value); renderVolume(); });
+$('btnSettings').addEventListener('click', renderVolume);
 
 function renderArticle(res) {
   const a = els.article;

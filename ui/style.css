@@ -787,6 +787,11 @@ body.mini .suggest { max-height: 300px; overflow: auto; }
 .sw-row.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-ring); }
 .sw-row.on .ic { color: var(--accent); }
 
+/* Settings > Volume */
+.vol { display: flex; align-items: center; gap: 10px; }
+.vol input[type=range] { width: 120px; accent-color: var(--accent); cursor: pointer; }
+.vol output { min-width: 44px; text-align: right; font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
 /* ---------------- Ask box at the bottom of wiki pages (and of every view in a small window); small windows: chat as a sheet ---------------- */
 .ask-grab { display: none; }
 body.ask-bar-on .scroller { padding-bottom: 76px; scroll-padding-bottom: 76px; }

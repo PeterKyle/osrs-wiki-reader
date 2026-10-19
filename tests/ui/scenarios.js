@@ -347,6 +347,17 @@ const S = {
     const au = els.article.querySelector('audio source');
     return { video, audio: au ? au.getAttribute('src') : null, videos: null };
   },
+  async volume() {   // Settings > Volume: players on screen follow the slider, new pages' players start at it, it's saved
+    await openPage('Mastering Mixology'); await wait(1200);
+    $id('btnSettings').click(); await wait(200);
+    const before = $id('volVal').textContent;
+    const r = $id('volRange'); r.value = 40; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); await wait(200);
+    const onScreen = [...els.article.querySelectorAll('video')].map((v) => Math.round(v.volume * 100));
+    await openPage('Woodcutting'); await wait(1200);
+    const fresh = Math.round(els.article.querySelector('audio').volume * 100);
+    r.value = 0; r.dispatchEvent(new Event('input')); await wait(100);
+    return { before, label: $id('volVal').textContent, onScreen: [...new Set(onScreen)], fresh, saved: (await api.get_state()).volume };
+  },
   async mixology() {   // Mastering Mixology rewards: 11 columns too wide for the page, with a Notes column of sentences
     await openPage('Mastering Mixology'); await wait(1500);
     const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Apprentice potion pack');

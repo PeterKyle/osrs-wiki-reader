@@ -10,7 +10,7 @@ const now = () => Date.now() / 1000;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 const __st = {
-  version: 'test', pinned: false, theme: QS.get('theme') || 'dark', zoom: 100,
+  version: 'test', pinned: false, theme: QS.get('theme') || 'dark', zoom: 100, volume: 100,
   hotkey: 'Ctrl+Alt+W', hotkeyOk: true, askHotkey: 'Ctrl+Alt+Q', askHotkeyOk: true,
   guideSeen: MODE !== 'guide',   // the first-launch guide only opens in the "guide" scenario
   recent: [], accounts: ['Lynx Titan', 'Woox'], me: 'Lynx Titan', bookmarks: ['Abyssal whip'],
@@ -52,7 +52,7 @@ window.__calls = [];   // every API call, for scenarios that want to check what 
 const API = {
   // settings / window
   get_state: async () => state(),
-  set_pref: async (k, v) => { if (k === 'theme') __st.theme = v; if (k === 'zoom') __st.zoom = v; if (k === 'guide_seen') __st.guideSeen = !!v; if (k === 'clear_recent') __st.recent = []; return state(); },
+  set_pref: async (k, v) => { if (k === 'theme') __st.theme = v; if (k === 'zoom') __st.zoom = v; if (k === 'volume') __st.volume = v; if (k === 'guide_seen') __st.guideSeen = !!v; if (k === 'clear_recent') __st.recent = []; return state(); },
   toggle_pin: async () => { __st.pinned = !__st.pinned; return state(); },
   minimize: async () => null, close: async () => null, toggle_maximize: async () => false, is_maximized: async () => false,
   start_drag: async () => null, start_resize: async () => null, open_external: async () => null,

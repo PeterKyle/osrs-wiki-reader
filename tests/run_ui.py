@@ -100,6 +100,7 @@ SCENARIOS = [
          expect={"video": lambda v: bool(v) and v["poster"].startswith("https://oldschool.runescape.wiki/images/")
                  and v["src"].startswith("https://oldschool.runescape.wiki/images/") and v["preload"] == "none",
                  "audio": starts("https://oldschool.runescape.wiki/images/")}),
+    dict(name="volume", mode="volume", size=(1100, 900), expect={"before": "100%", "onScreen": [40], "fresh": 40, "label": "Muted", "saved": 40}),
     dict(name="mixology", mode="mixology", size=(1100, 900), expect={"rowH": lambda v: v is not None and v < 160, "notesW": at_least(200), "scrolls": True}),
     dict(name="mixology_right", mode="mixology", size=(1100, 900), params={"right": 1}, expect={"notesW": at_least(200), "notesAlign": "left", "nameAlign": "left"}),
     dict(name="mixology_wide", mode="mixology", size=(1500, 900), params={"nochat": 1}, expect={"rowH": lambda v: v is not None and v < 200, "notesW": at_least(200)}),
