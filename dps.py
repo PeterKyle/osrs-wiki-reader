@@ -2,7 +2,7 @@
 
 Follows the standard formulas (Bitterkoekje's spreadsheet, as the wiki's DPS calculator does) for melee, ranged and
 magic, plus the special effects that most often change which gear is best: slayer helmet / black mask, salve amulet,
-void, dragon hunter lance and crossbow, arclight, keris, obsidian, inquisitor, crystal armour, twisted bow, scythe,
+void, dragon hunter lance and crossbow, demonbane weapons (arclight, scorching bow...), keris, obsidian, inquisitor, crystal armour, twisted bow, scythe,
 Osmumten's fang, powered staves, Tumeken's shadow, tome of fire and elemental weaknesses.
 Not modelled: special attacks, enchanted bolt effects, raid scaling, wield requirements, and degrading/charges.
 
@@ -248,6 +248,10 @@ def melee_dps(L, m, ctx, detail=False):
         acc.append((6, 5)), dmg.append((6, 5)), notes.append("Dragon hunter lance: +20% against dragons")
     if "demon" in attrs and ("arclight" in wn or "emberlight" in wn):
         acc.append((17, 10)), dmg.append((17, 10)), notes.append(f"{w['n']}: +70% against demons")
+    elif "demon" in attrs and ("silverlight" in wn or "darklight" in wn):
+        dmg.append((8, 5)), notes.append(f"{w['n']}: +60% damage against demons")
+    elif "demon" in attrs and "burning claws" in wn:
+        acc.append((21, 20)), dmg.append((21, 20)), notes.append("Burning claws: +5% against demons")
     if "kalphite" in attrs and "keris" in wn:
         dmg.append((133, 100)), notes.append("Keris: +33% against kalphites")
     if any(x in wn for x in OBSIDIAN_WEAPONS):
@@ -367,10 +371,19 @@ def ranged_dps(L, m, ctx, detail=False):
     if salve in ("i", "ei") and "undead" in attrs:
         f = (6, 5) if salve == "ei" else (7, 6)
         acc.append(f), dmg.append(f), notes.append(f"Salve amulet: +{'20' if salve == 'ei' else '16.7'}% against undead")
-    elif slay == "i" and ctx["task"]:
-        acc.append((23, 20)), dmg.append((23, 20)), notes.append("Slayer helmet (i): +15% on task")
+    bane = 0   # % damage from the slayer helmet (i) and a dragonbane/demonbane bow: these add together (wiki)
+    if salve not in ("i", "ei") or "undead" not in attrs:
+        if slay == "i" and ctx["task"]:
+            acc.append((23, 20)), notes.append("Slayer helmet (i): +15% on task")
+            bane += 15
     if "dragon" in attrs and "dragon hunter crossbow" in wn:
-        acc.append((13, 10)), dmg.append((5, 4)), notes.append("Dragon hunter crossbow: +30% accuracy, +25% damage against dragons")
+        acc.append((13, 10)), notes.append("Dragon hunter crossbow: +30% accuracy, +25% damage against dragons")
+        bane += 25
+    if "demon" in attrs and "scorching bow" in wn:
+        acc.append((13, 10)), notes.append("Scorching bow: +30% against demons")
+        bane += 30
+    if bane:
+        dmg.append((100 + bane, 100))
     if "twisted bow" in wn:
         ta, td = _tbow(m)
         acc.append((ta, 100)), dmg.append((td, 100)), notes.append(f"Twisted bow: {ta}% accuracy, {td}% damage against this monster")

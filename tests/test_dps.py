@@ -124,5 +124,37 @@ class Search(unittest.TestCase):
         self.assertEqual([s["style"] for s in dps.best_setups([whip], monster(), ctx)], ["melee"])
 
 
+
+class Demonbane(unittest.TestCase):
+    bow = item("Scorching bow", "weapon", a=(0, 0, 0, 124, 0), rs=40, sp=5, c="bow", two=True)
+    arrows = item("Rune arrow", "ammo", rs=49)
+
+    def ranged(self, m, **opts):
+        ctx = dps.make_context(LEVELS, None, [], dict(PLAIN, **opts))
+        return dps.ranged_dps(loadout(weapon=self.bow, ammo=self.arrows), m, ctx, detail=True)
+
+    def test_scorching_bow_against_demons(self):
+        plain, demon = self.ranged(monster()), self.ranged(monster(attrs=["demon"]))
+        self.assertEqual(demon["max"], plain["max"] * 13 // 10)
+        self.assertIn("Scorching bow: +30% against demons", demon["notes"])
+
+    def test_bow_bonus_adds_to_slayer_helmet(self):
+        # +15% (helmet) and +30% (bow) make +45%, not 1.15 x 1.3 = +49.5%
+        helm = item("Slayer helmet (i)", "head")
+        ctx = dps.make_context(LEVELS, None, [], dict(PLAIN, task=True))
+        base = dps.ranged_dps(loadout(weapon=self.bow, ammo=self.arrows), monster(), dps.make_context(LEVELS, None, [], PLAIN), detail=True)["max"]
+        both = dps.ranged_dps(loadout(weapon=self.bow, ammo=self.arrows, head=helm), monster(attrs=["demon"]), ctx, detail=True)["max"]
+        self.assertEqual(both, base * 145 // 100)
+
+    def test_silverlight_and_burning_claws(self):
+        ctx = dps.make_context(LEVELS, None, [], PLAIN)
+        sl = item("Silverlight", "weapon", a=(9, 14, 0, 0, 0), st=12, sp=5, c="slash sword")
+        plain = dps.melee_dps(loadout(weapon=sl), monster(), ctx, detail=True)["max"]
+        self.assertEqual(dps.melee_dps(loadout(weapon=sl), monster(attrs=["demon"]), ctx, detail=True)["max"], plain * 8 // 5)
+        claws = item("Burning claws", "weapon", a=(41, 57, -4, 0, 0), st=56, sp=4, c="claw", two=True)
+        d = dps.melee_dps(loadout(weapon=claws), monster(attrs=["demon"]), ctx, detail=True)
+        self.assertIn("Burning claws: +5% against demons", d["notes"])
+
+
 if __name__ == "__main__":
     unittest.main()
