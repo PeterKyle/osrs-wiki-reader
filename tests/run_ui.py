@@ -79,6 +79,9 @@ SCENARIOS = [
     # ...and opening the older chat brings back its 4 messages (2 questions + 2 answers)
     dict(name="hist_load", mode="hist", size=(1500, 1000), params={"load": 1},
          expect={"afterNew": starts("Greetings"), "items": 2, "msgs": 4}),
+    dict(name="boldlinks", mode="boldlinks", size=(1100, 900),
+         expect={"links": ["Mastering Mixology", "Chugging barrel", "Prescription goggles", "Alchemist's amulet"],
+                 "plain": ["Not a page at all:"], "colonKept": True}),
     dict(name="ask", mode="ask", size=(1100, 900), expect={"askOpen": True, "msgs": 2}),
     dict(name="typing", mode="typing", size=(1100, 900),
          expect={"backspace": "ok", "slash": "ok", "focusInChat": True, "navUnchanged": True}),
@@ -89,6 +92,10 @@ SCENARIOS = [
          expect={"rowH": lambda v: v is not None and v < 600, "wrapW": lambda v, r: v >= r["article"] - 80,
                  "imgs": lambda v: len(v) == 3 and all(i[2] > 0 for i in v)}),
     # Mastering Mixology rewards: too wide to fit, so it scrolls sideways, but the Notes column keeps a readable width
+    # dragging a too-wide table: sideways drags scroll it, an up-and-down start doesn't, and a drag ending on a link doesn't open it
+    dict(name="tabledrag", mode="tabledrag", size=(1100, 900),
+         expect={"grab": "grab", "dragged": lambda v: 280 <= v <= 320, "afterVertical": lambda v, r: v == r["dragged"],
+                 "stillHere": "Mastering Mixology", "dragClass": False}),
     dict(name="mixology", mode="mixology", size=(1100, 900), expect={"rowH": lambda v: v is not None and v < 160, "notesW": at_least(200), "scrolls": True}),
     dict(name="mixology_right", mode="mixology", size=(1100, 900), params={"right": 1}, expect={"notesW": at_least(200), "notesAlign": "left", "nameAlign": "left"}),
     dict(name="mixology_wide", mode="mixology", size=(1500, 900), params={"nochat": 1}, expect={"rowH": lambda v: v is not None and v < 200, "notesW": at_least(200)}),

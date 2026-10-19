@@ -304,6 +304,24 @@ const S = {
       wrapW: wrap ? Math.round(wrap.clientWidth) : null, tableW: wrap ? Math.round(wrap.scrollWidth) : null,
       article: Math.round(els.article.clientWidth) };
   },
+  async tabledrag() {   // grab a too-wide table and drag it sideways; an up-and-down start doesn't drag; a drag ending on a link doesn't follow it
+    await openPage('Mastering Mixology'); await wait(1500);
+    const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Apprentice potion pack');
+    const td = a.closest('td').nextElementSibling; const wrap = td.closest('.table-wrap');
+    await scrollTo(td, 200);
+    const r = td.getBoundingClientRect(), x = r.left + 10, y = r.top + 10;
+    const ev = (type, dx, dy, target) => (target || td).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: x + dx, clientY: y + dy }));
+    const grab = getComputedStyle(wrap).cursor;
+    ev('pointerdown', 0, 0); for (let i = 1; i <= 10; i++) ev('pointermove', -30 * i, 0); ev('pointerup', -300, 0);
+    const dragged = wrap.scrollLeft;
+    ev('pointerdown', 0, 0); for (let i = 1; i <= 5; i++) ev('pointermove', 0, 12 * i); ev('pointerup', 0, 60);
+    const afterVertical = wrap.scrollLeft;
+    wrap.scrollLeft = 0; await wait(100);
+    ev('pointerdown', 0, 0); for (let i = 1; i <= 5; i++) ev('pointermove', -20 * i, 0); ev('pointerup', -100, 0, a);
+    a.click(); await wait(400);
+    return { grab, dragged: Math.round(dragged), afterVertical: Math.round(afterVertical), stillHere: nav.stack[nav.idx].title,
+      dragClass: document.body.classList.contains('table-dragging') };
+  },
   async mixology() {   // Mastering Mixology rewards: 11 columns too wide for the page, with a Notes column of sentences
     await openPage('Mastering Mixology'); await wait(1500);
     const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Apprentice potion pack');
@@ -398,6 +416,13 @@ const S = {
     await send('How do I get a fire cape?'); await wait(300);
     if (QS.get('w')) { askW = +QS.get('w'); updateDock(); await wait(100); }
     return { askLeft: rect(chat.pop).left, askWidth: rect(chat.pop).width, pageRight: rect(els.scroller).right, msgs: msgCount() };
+  },
+  async boldlinks() {   // names the AI put in bold without linking them become links when the wiki has the page
+    await openChat(); await send('Best ironman reward for Mastering Mixology?'); await wait(500);
+    const last = [...document.querySelectorAll('#askBody .msg.ai')].pop();
+    return { links: [...last.querySelectorAll('.md a')].map((a) => a.textContent),
+      plain: [...last.querySelectorAll('.md b')].filter((b) => !b.querySelector('a')).map((b) => b.textContent.trim()),
+      colonKept: [...last.querySelectorAll('.md b')].some((b) => b.textContent.trim() === 'Chugging barrel:') };
   },
   async askbar() {   // small window: the chat waits as a bar at the bottom, asking opens it as a sheet, tapping the page folds it
     const still = document.createElement('style');   // headless Edge doesn't advance animations: the sheet would stay mid-slide

@@ -221,7 +221,23 @@ function addBubble(role, text, sources = [], scroll = true, ctx = null) {
   }
   chat.body.appendChild(div);
   if (scroll) scrollChat();
+  if (role !== 'user' && text) linkBoldNames(div);
   return div;
+}
+
+// Names the AI put in bold but didn't link ("**Chugging barrel:**"): if the wiki has a page by that name, link it.
+async function linkBoldNames(div) {
+  const bolds = [...div.querySelectorAll('.md b')].filter((b) => !b.closest('a') && !b.querySelector('a'));
+  const name = (b) => b.textContent.trim().replace(/[\s:：.,;!-]+$/, '').trim();
+  const names = [...new Set(bolds.map(name).filter((n) => n.length >= 3 && n.length <= 60 && /[a-z]/i.test(n)))];
+  if (!names.length) return;
+  const found = await api.wiki_titles(names);
+  bolds.forEach((b) => {
+    const n = name(b), title = found && found[n];
+    if (!title || !b.isConnected) return;
+    const rest = b.textContent.trim().slice(n.length);
+    b.innerHTML = `<a href="${wikiHref(title)}">${escapeHtml(n)}</a>${escapeHtml(rest)}`;
+  });
 }
 
 async function send(question) {

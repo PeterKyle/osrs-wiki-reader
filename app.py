@@ -34,7 +34,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.9.3"
+VERSION = "1.9.4"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -59,7 +59,10 @@ GEMINI_SYSTEM = (
     "Base your answer on the OSRS Wiki pages included with the question, which are current. If they don't cover it, "
     "say so and answer from general OSRS knowledge, noting it may be out of date. Never mix up OSRS with RuneScape 3. "
     "Be concise and practical: short paragraphs or bullet lists, with specific levels, items, locations and numbers. "
-    "When you mention a wiki page, write its title in double square brackets, like [[Fire cape]]. "
+    "Link things to their wiki page by writing the page title in double square brackets, like [[Fire cape]]: "
+    "every item, monster, NPC, location, quest, minigame, skill or activity you name, the first time you name it, "
+    "also inside bold text (e.g. **[[Prescription goggles]]:** ...). Use the exact page title (singular, as on the "
+    "wiki); for different wording use [[Page title|your words]]. "
     "If the player's stats are given, use them to tailor the answer (e.g. what they can do now and what they still need). "
     "The app can open wiki pages for the player. When they ask you to open, show, pull up or take them to a page or a "
     "section of one, reply with one short sentence and then put this on its own final line: "
@@ -1022,6 +1025,7 @@ class Api:
         self._gear = {}
         self._item_pages = {}
         self._monsters = {}
+        self._titles = {}
         self._sources = {}
         self._bank_lock = threading.Lock()
         self._bank_cache = None
@@ -2655,6 +2659,32 @@ class Api:
                 "versions": [x["version"] or x["name"] for x in versions], "version": v,
                 "styles": dps.best_setups(owned, m, ctx), "opts": ctx["opts"], "updated": b.get("updated"),
                 "synced": quests is not None}
+
+    def wiki_titles(self, names):
+        """{name: page title} for the names that are wiki pages (redirects followed): lets the chat turn item names
+        the AI put in bold into links. One request for up to 40 names; remembered."""
+        names = [str(n).strip()[:80] for n in (names or []) if isinstance(n, str) and str(n).strip()][:40]
+        with self._mem_lock:
+            known = {n: self._titles[n.lower()] for n in names if n.lower() in self._titles}
+        ask = [n for n in names if n not in known]
+        if ask:
+            try:
+                q = api_get(action="query", titles="|".join(ask), redirects=1)["query"]
+            except Exception:
+                return {k: v for k, v in known.items() if v}
+            to = {}
+            for x in q.get("normalized") or []:
+                to[x["from"]] = x["to"]
+            redir = {x["from"]: x["to"] for x in q.get("redirects") or []}
+            exists = {p["title"] for p in q.get("pages") or [] if not p.get("missing") and not p.get("invalid")}
+            with self._mem_lock:
+                for n in ask:
+                    t = to.get(n, n)
+                    t = redir.get(t, t)
+                    known[n] = self._titles[n.lower()] = t if t in exists else None
+                if len(self._titles) > 2000:
+                    self._titles.clear()
+        return {k: v for k, v in known.items() if v}
 
     def _item_sets(self):
         def fetch():

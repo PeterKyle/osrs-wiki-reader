@@ -286,9 +286,51 @@ function tableEdges(w) {
     });
   }
   const more = w.scrollWidth - w.clientWidth;
+  w.classList.toggle('can-drag', more > 1);
   w.classList.toggle('more-l', more > 1 && w.scrollLeft > 1);
   w.classList.toggle('more-r', more > 1 && w.scrollLeft < more - 1);
 }
+// Grab a table that's too wide and drag it sideways (the page follows up and down). It only becomes a drag once the
+// mouse moves mostly sideways, so selecting text that starts with a short or up-and-down movement still works; a
+// drag that ends on a link doesn't follow it.
+(() => {
+  let drag = null, justDragged = false;
+  els.article.addEventListener('pointerdown', (e) => {
+    const w = e.pointerType === 'mouse' && e.button === 0 && e.target.closest('.table-wrap.can-drag');
+    if (!w || e.target.closest('input, textarea, select, button, summary')) return;
+    drag = { w, id: e.pointerId, x: e.clientX, y: e.clientY, left: w.scrollLeft, top: els.scroller.scrollTop, on: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.on) {
+      if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy)) { if (Math.abs(dy) > 6) drag = null; return; }
+      drag.on = true;
+      document.body.classList.add('table-dragging');
+      const sel = window.getSelection();
+      if (sel) sel.removeAllRanges();
+      try { drag.w.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or ended pointer */ }
+    }
+    e.preventDefault();
+    drag.w.scrollLeft = drag.left - dx;
+    els.scroller.scrollTop = drag.top - dy;
+  });
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (drag.on) {
+      justDragged = true;
+      setTimeout(() => (justDragged = false), 0);   // the click this release causes is ignored, nothing later
+      document.body.classList.remove('table-dragging');
+    }
+    drag = null;
+  };
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+  els.article.addEventListener('click', (e) => {
+    if (justDragged) { e.preventDefault(); e.stopPropagation(); justDragged = false; }
+  }, true);
+})();
+
 // the page column changes width with the window and the docked chat
 new ResizeObserver(() => els.article.querySelectorAll('.table-wrap').forEach(tableEdges)).observe(els.article);
 

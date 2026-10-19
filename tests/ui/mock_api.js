@@ -28,6 +28,7 @@ const __st = {
 };
 const state = () => ({ ...__st, now: now() });
 
+const MIXOLOGY = "As an ironman, the best rewards from [[Mastering Mixology]] are its utility items.\n\n- **Chugging barrel:** drink several potions at once.\n- **Prescription goggles:** a chance to save secondaries.\n- **[[Alchemist's amulet]]:** already linked.\n- **Not a page at all:** stays plain.";
 const FIRE_CAPE = "To get a **fire cape** you need to complete the [[TzHaar Fight Cave]] and defeat [[TzTok-Jad]] at the end of wave 63.\n\nWith your levels (99 Ranged, 99 Defence) you're well set. Recommended setup:\n\n- **Ranged**: [[Toxic blowpipe]] or a [[Rune crossbow]] with ruby/diamond bolts (e)\n- **Prayer**: Protect from Missiles, swap to Magic for Jad's mage attack\n- **Supplies**: ~15 [[Saradomin brew]]s, 6 [[Super restore]]s\n\n| Wave | Notes |\n|---|---|\n| 1-62 | Use safespots |\n| 63 | TzTok-Jad: switch prayers on his animation |\n\nSee the strategy guide for safespots.";
 const SPEC = "The **special attack** (Energy Drain) drains 10% of the target's run energy and gives it to you.";
 
@@ -157,10 +158,12 @@ const API = {
   set_ask_mode: async (v) => { window.__mode = v; return API.ask_mode_info(); },
   ask: async (q, hist, ctx) => {
     window.__sentCtx = ctx;
+    if (/mixology/i.test(q)) return { model: 'gemini-3.8-flash', sources: ['Mastering Mixology'], answer: MIXOLOGY };
     return MODE.startsWith('ctx')
       ? { model: 'gemini-3.5-flash-lite', sources: ['Abyssal whip'], answer: SPEC }
       : { model: 'gemini-3.8-flash', sources: ['Fire cape', 'TzHaar Fight Cave', 'TzHaar Fight Cave/Strategies'], answer: FIRE_CAPE };
   },
+  wiki_titles: async (names) => Object.fromEntries(names.filter((n) => !/not a page/i.test(n)).map((n) => [n, n[0].toUpperCase() + n.slice(1)])),
   chats_list: async () => [...__chats].sort((a, b) => b.updated - a.updated)
     .map((c) => ({ id: c.id, title: c.title, updated: c.updated, questions: c.messages.filter((m) => m.role === 'user').length })),
   chat_load: async (id) => { const c = __chats.find((x) => x.id === id); return c ? clone(c) : null; },
