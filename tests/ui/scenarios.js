@@ -304,23 +304,31 @@ const S = {
       wrapW: wrap ? Math.round(wrap.clientWidth) : null, tableW: wrap ? Math.round(wrap.scrollWidth) : null,
       article: Math.round(els.article.clientWidth) };
   },
-  async tabledrag() {   // grab a too-wide table and drag it sideways; an up-and-down start doesn't drag; a drag ending on a link doesn't follow it
+  async tabledrag() {   // wide tables: a quick drag selects (no scroll); press and hold, then drag, scrolls sideways only
+    try { localStorage.removeItem('tableDragTip'); } catch (e) { /* */ }
     await openPage('Mastering Mixology'); await wait(1500);
     const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Apprentice potion pack');
     const td = a.closest('td').nextElementSibling; const wrap = td.closest('.table-wrap');
     await scrollTo(td, 200);
+    td.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' })); await wait(100);
+    const tip = (document.querySelector('.toast') || {}).textContent || '';
     const r = td.getBoundingClientRect(), x = r.left + 10, y = r.top + 10;
     const ev = (type, dx, dy, target) => (target || td).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: x + dx, clientY: y + dy }));
-    const grab = getComputedStyle(wrap).cursor;
+    // a quick drag: that's selecting text, so the table doesn't move
     ev('pointerdown', 0, 0); for (let i = 1; i <= 10; i++) ev('pointermove', -30 * i, 0); ev('pointerup', -300, 0);
-    const dragged = wrap.scrollLeft;
-    ev('pointerdown', 0, 0); for (let i = 1; i <= 5; i++) ev('pointermove', 0, 12 * i); ev('pointerup', 0, 60);
-    const afterVertical = wrap.scrollLeft;
+    const quick = wrap.scrollLeft;
+    // press and hold, then drag left and down: the table scrolls sideways, the page stays put
+    const pageTop = els.scroller.scrollTop;
+    ev('pointerdown', 0, 0); await wait(350);
+    const grabbing = document.body.classList.contains('table-grab');
+    for (let i = 1; i <= 10; i++) ev('pointermove', -30 * i, 8 * i); ev('pointerup', -300, 80);
+    const held = wrap.scrollLeft, pageMoved = els.scroller.scrollTop !== pageTop;
+    // a held drag that ends on a link doesn't open it
     wrap.scrollLeft = 0; await wait(100);
-    ev('pointerdown', 0, 0); for (let i = 1; i <= 5; i++) ev('pointermove', -20 * i, 0); ev('pointerup', -100, 0, a);
+    ev('pointerdown', 0, 0); await wait(350); for (let i = 1; i <= 5; i++) ev('pointermove', -20 * i, 0); ev('pointerup', -100, 0, a);
     a.click(); await wait(400);
-    return { grab, dragged: Math.round(dragged), afterVertical: Math.round(afterVertical), stillHere: nav.stack[nav.idx].title,
-      dragClass: document.body.classList.contains('table-dragging') };
+    return { tip: tip.startsWith('Tip: this table is wider'), quick: Math.round(quick), grabbing, held: Math.round(held), pageMoved,
+      stillHere: nav.stack[nav.idx].title, cleared: !document.body.classList.contains('table-grab') };
   },
   async mixology() {   // Mastering Mixology rewards: 11 columns too wide for the page, with a Notes column of sentences
     await openPage('Mastering Mixology'); await wait(1500);

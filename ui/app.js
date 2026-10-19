@@ -290,45 +290,65 @@ function tableEdges(w) {
   w.classList.toggle('more-l', more > 1 && w.scrollLeft > 1);
   w.classList.toggle('more-r', more > 1 && w.scrollLeft < more - 1);
 }
-// Grab a table that's too wide and drag it sideways (the page follows up and down). It only becomes a drag once the
-// mouse moves mostly sideways, so selecting text that starts with a short or up-and-down movement still works; a
-// drag that ends on a link doesn't follow it.
+// Wide tables: press and hold (without moving) to grab one, then drag to scroll it sideways. A normal click-and-drag
+// still selects text, and a hold released without moving still clicks.
+const TABLE_HOLD_MS = 250;
 (() => {
-  let drag = null, justDragged = false;
+  let drag = null, justDragged = false, tipShown = false;
+  try { tipShown = localStorage.getItem('tableDragTip') === '1'; } catch (e) { /* show it this time */ }
+  const stop = () => {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    document.body.classList.remove('table-grab', 'table-dragging');
+    drag = null;
+  };
   els.article.addEventListener('pointerdown', (e) => {
     const w = e.pointerType === 'mouse' && e.button === 0 && e.target.closest('.table-wrap.can-drag');
-    if (!w || e.target.closest('input, textarea, select, button, summary')) return;
-    drag = { w, id: e.pointerId, x: e.clientX, y: e.clientY, left: w.scrollLeft, top: els.scroller.scrollTop, on: false };
+    if (!w || e.target.closest('input, textarea, select, button')) return;
+    drag = { w, id: e.pointerId, x: e.clientX, y0: e.clientY, left: w.scrollLeft, armed: false, moved: false };
+    drag.timer = setTimeout(() => {   // held still: grab
+      if (!drag) return;
+      drag.armed = true;
+      document.body.classList.add('table-grab');
+      const sel = window.getSelection();
+      if (sel) sel.removeAllRanges();
+      try { w.setPointerCapture(drag.id); } catch (err) { /* synthetic or ended pointer */ }
+    }, TABLE_HOLD_MS);
   });
   window.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.on) {
-      if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy)) { if (Math.abs(dy) > 6) drag = null; return; }
-      drag.on = true;
-      document.body.classList.add('table-dragging');
-      const sel = window.getSelection();
-      if (sel) sel.removeAllRanges();
-      try { drag.w.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or ended pointer */ }
+    const dx = e.clientX - drag.x;
+    if (!drag.armed) {   // moved before the hold: it's a text selection, not a grab
+      if (Math.abs(dx) > 4 || Math.abs(e.clientY - drag.y0) > 4) stop();
+      return;
     }
     e.preventDefault();
-    drag.w.scrollLeft = drag.left - dx;
-    els.scroller.scrollTop = drag.top - dy;
+    if (!drag.moved && Math.abs(dx) > 2) { drag.moved = true; document.body.classList.add('table-dragging'); }
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) sel.removeAllRanges();
+    drag.w.scrollLeft = drag.left - dx;   // sideways only
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    if (drag.on) {
+    if (drag.moved) {
       justDragged = true;
       setTimeout(() => (justDragged = false), 0);   // the click this release causes is ignored, nothing later
-      document.body.classList.remove('table-dragging');
     }
-    drag = null;
+    stop();
   };
   window.addEventListener('pointerup', end);
   window.addEventListener('pointercancel', end);
+  document.addEventListener('selectstart', (e) => { if (drag && drag.armed) e.preventDefault(); });
   els.article.addEventListener('click', (e) => {
     if (justDragged) { e.preventDefault(); e.stopPropagation(); justDragged = false; }
   }, true);
+  // once: how to grab a wide table
+  els.article.addEventListener('pointerover', (e) => {
+    if (tipShown || e.pointerType !== 'mouse' || !e.target.closest('.table-wrap.can-drag')) return;
+    tipShown = true;
+    try { localStorage.setItem('tableDragTip', '1'); } catch (err) { /* once per session then */ }
+    toast('Tip: this table is wider than the page. Press and hold on it, then drag to scroll it sideways.');
+  });
 })();
 
 // the page column changes width with the window and the docked chat

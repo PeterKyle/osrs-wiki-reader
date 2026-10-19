@@ -93,9 +93,8 @@
 .wiki .table-wrap td img { max-width: none; }
 /* sentences in a table that scrolls sideways anyway: a readable width instead of a word per line (see tableEdges) */
 .wiki .table-wrap td.long-cell { min-width: 15em !important; }
-/* tables too wide to fit can be grabbed and dragged sideways (app.js) */
-.wiki .table-wrap.can-drag { cursor: grab; }
-body.table-dragging, body.table-dragging * { cursor: grabbing !important; user-select: none !important; }
+/* tables too wide to fit: press and hold, then drag sideways (app.js) */
+body.table-grab, body.table-grab * { cursor: grabbing !important; user-select: none !important; }
 .wiki .table-wrap td.longer-cell { min-width: 22em !important; }
 /* the wiki's per-column alignment classes (align-left-2, align-center-1...), as on the wiki */
 .wiki table.align-left-1 > * > tr > td:nth-child(1), .wiki table.align-left-2 > * > tr > td:nth-child(2), .wiki table.align-left-3 > * > tr > td:nth-child(3), .wiki table.align-left-4 > * > tr > td:nth-child(4), .wiki table.align-left-5 > * > tr > td:nth-child(5), .wiki table.align-left-6 > * > tr > td:nth-child(6), .wiki table.align-left-7 > * > tr > td:nth-child(7), .wiki table.align-left-8 > * > tr > td:nth-child(8), .wiki table.align-left-9 > * > tr > td:nth-child(9), .wiki table.align-left-10 > * > tr > td:nth-child(10), .wiki table.align-left-11 > * > tr > td:nth-child(11), .wiki table.align-left-12 > * > tr > td:nth-child(12), .wiki table.align-left-13 > * > tr > td:nth-child(13), .wiki table.align-left-14 > * > tr > td:nth-child(14), .wiki table.align-left-15 > * > tr > td:nth-child(15) { text-align: left; }
