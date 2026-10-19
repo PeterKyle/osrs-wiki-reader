@@ -371,7 +371,8 @@ els.article.addEventListener('pointerover', (e) => {
 function placeArrows(box) {
   placeArrows.box = box;
   const r = box.getBoundingClientRect(), view = els.scroller.getBoundingClientRect();
-  const top = Math.max(r.top, view.top + parseFloat(getComputedStyle(els.scroller).paddingTop)), bottom = Math.min(r.bottom, view.bottom);
+  placeArrows.pad = placeArrows.pad || parseFloat(getComputedStyle(els.scroller).paddingTop) || 0;
+  const top = Math.max(r.top, view.top + placeArrows.pad), bottom = Math.min(r.bottom, view.bottom);
   box.style.setProperty('--arrow-y', Math.max(18, (top + bottom) / 2 - r.top) + 'px');
 }
 
@@ -384,11 +385,23 @@ const floatBar = (() => {
   bar.innerHTML = '<div></div>';
   document.body.appendChild(bar);
   const api = { w: null, el: bar };
-  let frame = 0;
-  // the two stay in step; copying only real differences means neither one's scroll event bounces back
-  api.sync = () => { if (api.w && Math.abs(bar.scrollLeft - api.w.scrollLeft) > 1) bar.scrollLeft = api.w.scrollLeft; };
+  let frame = 0, echo = null, barActiveUntil = 0;
+  // The two stay in step without echoing: the bar ignores the scroll event caused by our own update (echo), and
+  // while you're moving the bar the table doesn't push its slightly older position back onto it (that fought the
+  // mouse and felt choppy, and writing the table's position mid-way cancelled the arrows' smooth scroll).
+  api.sync = () => {
+    if (!api.w || performance.now() < barActiveUntil) return;
+    const x = api.w.scrollLeft;
+    if (Math.abs(bar.scrollLeft - x) <= 1) return;
+    echo = x;
+    bar.scrollLeft = x;
+  };
   bar.addEventListener('scroll', () => {
-    if (api.w && Math.abs(api.w.scrollLeft - bar.scrollLeft) > 1) api.w.scrollLeft = bar.scrollLeft;
+    if (!api.w) return;
+    if (echo !== null && Math.abs(bar.scrollLeft - echo) <= 1) { echo = null; return; }   // our own update
+    echo = null;
+    barActiveUntil = performance.now() + 150;
+    api.w.scrollLeft = bar.scrollLeft;
   }, { passive: true });
   api.update = () => {
     const ask = document.getElementById('askBar');

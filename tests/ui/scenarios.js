@@ -322,8 +322,19 @@ const S = {
     fbar.scrollLeft = 0; fbar.dispatchEvent(new Event('scroll')); await wait(200);
     const viaFloat = wrap.scrollLeft;
     wrap.scrollLeft = 400; wrap.dispatchEvent(new Event('scroll')); await wait(300);
-    return { box: box.classList.contains('table-box'), wide: box.classList.contains('wide'), floatShown, floatAboveAsk,
-      afterArrow: Math.round(afterArrow), viaFloat: Math.round(viaFloat), floatFollows: Math.round(fbar.scrollLeft) === Math.round(wrap.scrollLeft),
+    const followed = Math.round(fbar.scrollLeft) === Math.round(wrap.scrollLeft);   // (the table's end may come before 400)
+    // the arrows' smooth scroll: the table moves on, then the bar's (late) echo of our own update arrives;
+    // it must not pull the table back (that cancelled the smooth scroll)
+    wrap.scrollLeft = 200; wrap.dispatchEvent(new Event('scroll'));
+    wrap.scrollLeft = 260; fbar.dispatchEvent(new Event('scroll'));
+    const arrowKept = Math.round(wrap.scrollLeft);
+    // dragging the bar: the table's late scroll event must not push the bar back under the mouse
+    await wait(300);
+    fbar.scrollLeft = 100; fbar.dispatchEvent(new Event('scroll'));
+    fbar.scrollLeft = 140; wrap.dispatchEvent(new Event('scroll'));
+    const barKept = Math.round(fbar.scrollLeft);
+    return { followed, arrowKept, barKept, box: box.classList.contains('table-box'), wide: box.classList.contains('wide'), floatShown, floatAboveAsk,
+      afterArrow: Math.round(afterArrow), viaFloat: Math.round(viaFloat), floatFollows: followed,
       pinned: [...tr.children].slice(0, 3).map((c) => c.classList.contains('pin')),
       nameStays: Math.abs(tr.children[1].getBoundingClientRect().left - nameLeft) <= 1,
       leftFadeOff: getComputedStyle(wrap).maskImage === 'none' || getComputedStyle(wrap).webkitMaskImage === 'none' || !getComputedStyle(wrap).maskImage.includes('to left') };
