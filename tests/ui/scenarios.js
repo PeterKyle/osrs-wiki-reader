@@ -304,6 +304,17 @@ const S = {
       wrapW: wrap ? Math.round(wrap.clientWidth) : null, tableW: wrap ? Math.round(wrap.scrollWidth) : null,
       article: Math.round(els.article.clientWidth) };
   },
+  async mixology() {   // Mastering Mixology rewards: 11 columns too wide for the page, with a Notes column of sentences
+    await openPage('Mastering Mixology'); await wait(1500);
+    const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Apprentice potion pack');
+    const tr = a && a.closest('tr'); const wrap = tr && tr.closest('.table-wrap');
+    if (tr) await scrollTo(tr, 140);
+    if (wrap && QS.get('right')) { wrap.scrollLeft = wrap.scrollWidth; await wait(200); }
+    const notes = tr && tr.lastElementChild;
+    return { notesAlign: notes ? getComputedStyle(notes).textAlign : null, nameAlign: tr ? getComputedStyle(tr.children[1]).textAlign : null,
+      rowH: tr ? Math.round(tr.getBoundingClientRect().height) : null, notesW: notes ? Math.round(notes.getBoundingClientRect().width) : null,
+      scrolls: wrap ? wrap.scrollWidth > wrap.clientWidth : null };
+  },
   async alert() { await openPage('Abyssal whip'); await wait(400); $id('geAlertBtn').click(); await wait(200); },
 
   // ---- settings / chrome ----

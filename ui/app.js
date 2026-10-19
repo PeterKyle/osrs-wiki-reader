@@ -275,6 +275,16 @@ function tableEdges(w) {
   if (!w.classList.contains('clear') && w.clientWidth < room - 40 && (w.scrollWidth > w.clientWidth + 1 || w.clientWidth < room * 0.6)) {
     w.classList.add('clear');
   }
+  // Too wide to fit at all: the browser then shrinks every column to its narrowest, so a column of sentences
+  // (notes, descriptions) ends up a word wide and every row very tall. It scrolls sideways anyway, so give those
+  // cells a readable width.
+  if (!w.dataset.long && w.scrollWidth > w.clientWidth + 1) {
+    w.dataset.long = '1';
+    w.querySelectorAll(':scope > table > tbody > tr > td').forEach((td) => {
+      const n = td.textContent.trim().length;
+      if (n > 60) td.classList.add(n > 160 ? 'longer-cell' : 'long-cell');
+    });
+  }
   const more = w.scrollWidth - w.clientWidth;
   w.classList.toggle('more-l', more > 1 && w.scrollLeft > 1);
   w.classList.toggle('more-r', more > 1 && w.scrollLeft < more - 1);

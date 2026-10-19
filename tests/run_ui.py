@@ -88,6 +88,10 @@ SCENARIOS = [
     dict(name="wood", mode="wood", size=(1100, 900),
          expect={"rowH": lambda v: v is not None and v < 600, "wrapW": lambda v, r: v >= r["article"] - 80,
                  "imgs": lambda v: len(v) == 3 and all(i[2] > 0 for i in v)}),
+    # Mastering Mixology rewards: too wide to fit, so it scrolls sideways, but the Notes column keeps a readable width
+    dict(name="mixology", mode="mixology", size=(1100, 900), expect={"rowH": lambda v: v is not None and v < 160, "notesW": at_least(200), "scrolls": True}),
+    dict(name="mixology_right", mode="mixology", size=(1100, 900), params={"right": 1}, expect={"notesW": at_least(200), "notesAlign": "left", "nameAlign": "left"}),
+    dict(name="mixology_wide", mode="mixology", size=(1500, 900), params={"nochat": 1}, expect={"rowH": lambda v: v is not None and v < 200, "notesW": at_least(200)}),
     dict(name="quest", mode="quest", size=(1100, 900), expect={"page": "Dragon Slayer II", "banner": True}),
     dict(name="diary", mode="diary", size=(1100, 900), expect={"page": "Ardougne Diary", "diaryNotes": at_least(1)}),
     dict(name="methods", mode="methods", size=(1100, 900), expect={"page": "Agility", "methods": at_least(1)}),
