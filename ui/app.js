@@ -220,6 +220,16 @@ function fixMedia(root) {
     if (set) img.setAttribute('srcset', set.replace(/(^|,\s*)\/(?!\/)/g, '$1' + WIKI + '/'));
     img.loading = 'lazy';
   });
+  // videos and sound clips (gallery videos, level-up music players): their files and preview pictures too. They
+  // still only download when you press play, straight from the wiki, as on the website.
+  root.querySelectorAll('video, audio').forEach((m) => {
+    const poster = m.getAttribute('poster');
+    if (poster) m.setAttribute('poster', abs(poster));
+    if (m.getAttribute('src')) m.setAttribute('src', abs(m.getAttribute('src')));
+    m.querySelectorAll('source[src], track[src]').forEach((x) => x.setAttribute('src', abs(x.getAttribute('src'))));
+    m.preload = 'none';
+    m.load();   // pick up the fixed addresses
+  });
 }
 
 function renderArticle(res) {

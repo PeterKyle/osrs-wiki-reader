@@ -96,6 +96,10 @@ SCENARIOS = [
     dict(name="tablenav", mode="tablenav", size=(1100, 900),
          expect={"box": True, "wide": True, "floatShown": True, "floatAboveAsk": True, "afterArrow": at_least(200), "viaFloat": 0,
                  "floatFollows": True, "pinned": [True, True, False], "nameStays": True, "arrowKept": 260, "barKept": 140}),
+    dict(name="media", mode="media", size=(1100, 900),
+         expect={"video": lambda v: bool(v) and v["poster"].startswith("https://oldschool.runescape.wiki/images/")
+                 and v["src"].startswith("https://oldschool.runescape.wiki/images/") and v["preload"] == "none",
+                 "audio": starts("https://oldschool.runescape.wiki/images/")}),
     dict(name="mixology", mode="mixology", size=(1100, 900), expect={"rowH": lambda v: v is not None and v < 160, "notesW": at_least(200), "scrolls": True}),
     dict(name="mixology_right", mode="mixology", size=(1100, 900), params={"right": 1}, expect={"notesW": at_least(200), "notesAlign": "left", "nameAlign": "left"}),
     dict(name="mixology_wide", mode="mixology", size=(1500, 900), params={"nochat": 1}, expect={"rowH": lambda v: v is not None and v < 200, "notesW": at_least(200)}),

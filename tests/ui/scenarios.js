@@ -339,6 +339,14 @@ const S = {
       nameStays: Math.abs(tr.children[1].getBoundingClientRect().left - nameLeft) <= 1,
       leftFadeOff: getComputedStyle(wrap).maskImage === 'none' || getComputedStyle(wrap).webkitMaskImage === 'none' || !getComputedStyle(wrap).maskImage.includes('to left') };
   },
+  async media() {   // gallery videos and level-up music clips point at the wiki's files (they were relative, so empty)
+    await openPage('Mastering Mixology'); await wait(1200);
+    const v = els.article.querySelector('video');
+    const video = v ? { poster: v.getAttribute('poster'), src: v.querySelector('source').getAttribute('src'), preload: v.preload } : null;
+    await openPage('Woodcutting'); await wait(1200);
+    const au = els.article.querySelector('audio source');
+    return { video, audio: au ? au.getAttribute('src') : null, videos: null };
+  },
   async mixology() {   // Mastering Mixology rewards: 11 columns too wide for the page, with a Notes column of sentences
     await openPage('Mastering Mixology'); await wait(1500);
     const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Apprentice potion pack');
