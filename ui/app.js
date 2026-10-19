@@ -123,6 +123,7 @@ function show(which) {
   if (window.updateBookmarkBtn) updateBookmarkBtn();
   if (window.renderCtx) renderCtx();   // keep the chat's "current page" chip in step with what's on screen
   if (window.updateDock) updateDock();   // the Ask box at the bottom shows on wiki pages
+  if (window.floatBar) floatBar.queue();
 }
 
 function goHome(push = true) {
@@ -258,22 +259,44 @@ function renderArticle(res) {
 function wrapTables(root) {
   root.querySelectorAll('table.wikitable, table.lighttable').forEach((t) => {
     if (t.closest('.infobox') || t.parentElement.classList.contains('table-wrap')) return;
+    // box: the table's scroll area plus the ‹ › arrows beside it (outside the scroll area, so they stay put)
+    const box = document.createElement('div');
+    box.className = 'table-box';
     const w = document.createElement('div');
     w.className = 'table-wrap';
-    t.parentNode.insertBefore(w, t);
+    t.parentNode.insertBefore(box, t);
     w.appendChild(t);
-    w.addEventListener('scroll', () => tableEdges(w), { passive: true });
+    box.append(w, tableArrow('l'), tableArrow('r'));
+    w.addEventListener('scroll', () => { tableEdges(w); if (floatBar.w === w) floatBar.sync(); }, { passive: true });
   });
-  requestAnimationFrame(() => root.querySelectorAll('.table-wrap').forEach(tableEdges));
+  requestAnimationFrame(() => {
+    root.querySelectorAll('.table-wrap').forEach((w) => { tableLayout(w); tableEdges(w); });
+    floatBar.update();
+  });
 }
 
-// Mark which sides of a too-wide table have more columns to scroll to (the CSS fades those edges).
-function tableEdges(w) {
+function tableArrow(side) {
+  const b = document.createElement('button');
+  b.className = 'tbl-arrow ' + side;
+  b.tabIndex = -1;
+  b.title = side === 'l' ? 'Scroll the table left' : 'Scroll the table right';
+  b.innerHTML = svgIcon(side === 'l' ? 'i-back' : 'i-fwd');
+  b.onclick = () => {
+    const w = b.parentElement.querySelector('.table-wrap');
+    const pinned = parseFloat(w.dataset.pinW || 0);
+    w.scrollBy({ left: (side === 'l' ? -1 : 1) * Math.max(120, (w.clientWidth - pinned) * 0.75), behavior: 'smooth' });
+  };
+  return b;
+}
+
+// Layout fixes that depend on the table's width (run when it's shown and when the page column resizes)
+function tableLayout(w) {
+  const box = w.parentElement.classList.contains('table-box') ? w.parentElement : w;
   // A float on the right (infobox, music player) narrows a table's scroll box for its whole length, which squeezes
   // wide tables into tall, thin rows. When it doesn't fit beside the float, drop it below the float instead.
-  const room = w.parentElement.clientWidth;
-  if (!w.classList.contains('clear') && w.clientWidth < room - 40 && (w.scrollWidth > w.clientWidth + 1 || w.clientWidth < room * 0.6)) {
-    w.classList.add('clear');
+  const room = box.parentElement.clientWidth;
+  if (!box.classList.contains('clear') && w.clientWidth < room - 40 && (w.scrollWidth > w.clientWidth + 1 || w.clientWidth < room * 0.6)) {
+    box.classList.add('clear');
   }
   // Too wide to fit at all: the browser then shrinks every column to its narrowest, so a column of sentences
   // (notes, descriptions) ends up a word wide and every row very tall. It scrolls sideways anyway, so give those
@@ -285,74 +308,124 @@ function tableEdges(w) {
       if (n > 60) td.classList.add(n > 160 ? 'longer-cell' : 'long-cell');
     });
   }
-  const more = w.scrollWidth - w.clientWidth;
-  w.classList.toggle('can-drag', more > 1);
-  w.classList.toggle('more-l', more > 1 && w.scrollLeft > 1);
-  w.classList.toggle('more-r', more > 1 && w.scrollLeft < more - 1);
+  pinFirstColumn(w);
 }
-// Wide tables: press and hold (without moving) to grab one, then drag to scroll it sideways. A normal click-and-drag
-// still selects text, and a hold released without moving still clicks.
-const TABLE_HOLD_MS = 250;
-(() => {
-  let drag = null, justDragged = false, tipShown = false;
-  try { tipShown = localStorage.getItem('tableDragTip') === '1'; } catch (e) { /* show it this time */ }
-  const stop = () => {
-    if (!drag) return;
-    clearTimeout(drag.timer);
-    document.body.classList.remove('table-grab', 'table-dragging');
-    drag = null;
+
+// When a table scrolls sideways, its first column (the item / name; an icon + name pair counts as one) stays put.
+function pinFirstColumn(w) {
+  const t = w.querySelector(':scope > table');
+  const clear = () => {
+    w.classList.remove('pinned');
+    delete w.dataset.pinW;
+    w.querySelectorAll('.pin').forEach((c) => { c.classList.remove('pin', 'pin-edge'); c.style.left = ''; });
   };
-  els.article.addEventListener('pointerdown', (e) => {
-    const w = e.pointerType === 'mouse' && e.button === 0 && e.target.closest('.table-wrap.can-drag');
-    if (!w || e.target.closest('input, textarea, select, button')) return;
-    drag = { w, id: e.pointerId, x: e.clientX, y0: e.clientY, left: w.scrollLeft, armed: false, moved: false };
-    drag.timer = setTimeout(() => {   // held still: grab
-      if (!drag) return;
-      drag.armed = true;
-      document.body.classList.add('table-grab');
-      const sel = window.getSelection();
-      if (sel) sel.removeAllRanges();
-      try { w.setPointerCapture(drag.id); } catch (err) { /* synthetic or ended pointer */ }
-    }, TABLE_HOLD_MS);
-  });
-  window.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x;
-    if (!drag.armed) {   // moved before the hold: it's a text selection, not a grab
-      if (Math.abs(dx) > 4 || Math.abs(e.clientY - drag.y0) > 4) stop();
-      return;
+  if (!t || w.scrollWidth <= w.clientWidth + 1 || !t.rows.length) { clear(); return; }
+  const rows = [...t.rows];
+  const k = Math.min(2, (rows[0].cells[0] && rows[0].cells[0].colSpan) || 1);
+  const grid = [];   // which cell covers each row/column (rowspans and colspans)
+  rows.forEach((tr, r) => {
+    grid[r] = grid[r] || [];
+    let c = 0;
+    for (const cell of tr.cells) {
+      while (grid[r][c]) c++;
+      cell._col = c;
+      for (let dr = 0; dr < cell.rowSpan; dr++) for (let dc = 0; dc < cell.colSpan; dc++) (grid[r + dr] = grid[r + dr] || [])[c + dc] = cell;
+      c += cell.colSpan;
     }
-    e.preventDefault();
-    if (!drag.moved && Math.abs(dx) > 2) { drag.moved = true; document.body.classList.add('table-dragging'); }
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) sel.removeAllRanges();
-    drag.w.scrollLeft = drag.left - dx;   // sideways only
   });
-  const end = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    if (drag.moved) {
-      justDragged = true;
-      setTimeout(() => (justDragged = false), 0);   // the click this release causes is ignored, nothing later
+  const cells = rows.flatMap((tr) => [...tr.cells]);
+  if (cells.some((c) => c._col < k && c._col + c.colSpan > k)) { clear(); return; }   // a cell spans out of the pinned part
+  const widths = [];
+  for (let c = 0; c < k; c++) {
+    const one = cells.find((x) => x._col === c && x.colSpan === 1);
+    widths[c] = one ? one.getBoundingClientRect().width : 0;
+  }
+  const total = widths.reduce((a, b) => a + b, 0);
+  if (!total || total > w.clientWidth * 0.4) { clear(); return; }   // too wide to pin
+  w.classList.add('pinned');
+  w.dataset.pinW = total;
+  cells.forEach((c) => {
+    const pin = c._col < k;
+    c.classList.toggle('pin', pin);
+    c.classList.toggle('pin-edge', pin && c._col + c.colSpan === k);
+    c.style.left = pin ? widths.slice(0, c._col).reduce((a, b) => a + b, 0) + 'px' : '';
+  });
+}
+
+// Which sides of a too-wide table have more columns to scroll to (the CSS fades those edges and shows the arrows).
+function tableEdges(w) {
+  const more = w.scrollWidth - w.clientWidth;
+  const box = w.parentElement.classList.contains('table-box') ? w.parentElement : w;
+  [w, box].forEach((x) => {
+    x.classList.toggle('more-l', more > 1 && w.scrollLeft > 1);
+    x.classList.toggle('more-r', more > 1 && w.scrollLeft < more - 1);
+  });
+  box.classList.toggle('wide', more > 1);
+}
+
+// The arrows sit at the middle of the part of the table you can see
+els.article.addEventListener('pointerover', (e) => {
+  const box = e.target.closest('.table-box.wide');
+  if (box && box !== placeArrows.box) placeArrows(box);
+});
+function placeArrows(box) {
+  placeArrows.box = box;
+  const r = box.getBoundingClientRect(), view = els.scroller.getBoundingClientRect();
+  const top = Math.max(r.top, view.top + parseFloat(getComputedStyle(els.scroller).paddingTop)), bottom = Math.min(r.bottom, view.bottom);
+  box.style.setProperty('--arrow-y', Math.max(18, (top + bottom) / 2 - r.top) + 'px');
+}
+
+// A scrollbar pinned to the bottom of the window for the wide table you're looking at, while its own scrollbar is
+// below the window, so you don't have to scroll down to the end of the table to reach it.
+const floatBar = (() => {
+  const bar = document.createElement('div');
+  bar.className = 'float-hbar';
+  bar.hidden = true;
+  bar.innerHTML = '<div></div>';
+  document.body.appendChild(bar);
+  const api = { w: null, el: bar };
+  let frame = 0;
+  // the two stay in step; copying only real differences means neither one's scroll event bounces back
+  api.sync = () => { if (api.w && Math.abs(bar.scrollLeft - api.w.scrollLeft) > 1) bar.scrollLeft = api.w.scrollLeft; };
+  bar.addEventListener('scroll', () => {
+    if (api.w && Math.abs(api.w.scrollLeft - bar.scrollLeft) > 1) api.w.scrollLeft = bar.scrollLeft;
+  }, { passive: true });
+  api.update = () => {
+    const ask = document.getElementById('askBar');
+    const view = els.scroller.getBoundingClientRect();
+    const limit = ask && !ask.hidden ? ask.getBoundingClientRect().top - 8 : view.bottom - 6;   // above the Ask box
+    let best = null;
+    if (!els.article.hidden && !document.body.classList.contains('mini')) {
+      for (const w of els.article.querySelectorAll('.table-box.wide > .table-wrap')) {
+        const r = w.getBoundingClientRect();
+        if (r.bottom > limit + 4 && r.top < limit - 90) { best = w; break; }   // its own bar is below; enough is showing
+      }
     }
-    stop();
+    if (!best) { bar.hidden = true; api.w = null; return; }
+    const r = best.getBoundingClientRect();
+    bar.hidden = false;
+    bar.style.left = r.left + 'px';
+    bar.style.width = r.width + 'px';
+    bar.style.top = (limit - 14) + 'px';
+    bar.firstChild.style.width = best.scrollWidth + 'px';
+    api.w = best;
+    api.sync();
   };
-  window.addEventListener('pointerup', end);
-  window.addEventListener('pointercancel', end);
-  document.addEventListener('selectstart', (e) => { if (drag && drag.armed) e.preventDefault(); });
-  els.article.addEventListener('click', (e) => {
-    if (justDragged) { e.preventDefault(); e.stopPropagation(); justDragged = false; }
-  }, true);
-  // once: how to grab a wide table
-  els.article.addEventListener('pointerover', (e) => {
-    if (tipShown || e.pointerType !== 'mouse' || !e.target.closest('.table-wrap.can-drag')) return;
-    tipShown = true;
-    try { localStorage.setItem('tableDragTip', '1'); } catch (err) { /* once per session then */ }
-    toast('Tip: this table is wider than the page. Press and hold on it, then drag to scroll it sideways.');
-  });
+  api.queue = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; api.update(); }); };
+  els.scroller.addEventListener('scroll', () => {
+    api.queue();
+    if (placeArrows.box) placeArrows(placeArrows.box);
+  }, { passive: true });
+  window.addEventListener('resize', api.queue);
+  return api;
 })();
+window.floatBar = floatBar;
 
 // the page column changes width with the window and the docked chat
-new ResizeObserver(() => els.article.querySelectorAll('.table-wrap').forEach(tableEdges)).observe(els.article);
+new ResizeObserver(() => {
+  els.article.querySelectorAll('.table-wrap').forEach((w) => { tableLayout(w); tableEdges(w); });
+  floatBar.queue();
+}).observe(els.article);
 
 function cellValue(cell) {
   if (!cell) return '';

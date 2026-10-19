@@ -304,31 +304,29 @@ const S = {
       wrapW: wrap ? Math.round(wrap.clientWidth) : null, tableW: wrap ? Math.round(wrap.scrollWidth) : null,
       article: Math.round(els.article.clientWidth) };
   },
-  async tabledrag() {   // wide tables: a quick drag selects (no scroll); press and hold, then drag, scrolls sideways only
-    try { localStorage.removeItem('tableDragTip'); } catch (e) { /* */ }
+  async tablenav() {   // wide tables: arrows on the edges, a scrollbar kept at the bottom of the window, the first column pinned
     await openPage('Mastering Mixology'); await wait(1500);
     const a = [...els.article.querySelectorAll('td a')].find((x) => x.textContent.trim() === 'Apprentice potion pack');
-    const td = a.closest('td').nextElementSibling; const wrap = td.closest('.table-wrap');
-    await scrollTo(td, 200);
-    td.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' })); await wait(100);
-    const tip = (document.querySelector('.toast') || {}).textContent || '';
-    const r = td.getBoundingClientRect(), x = r.left + 10, y = r.top + 10;
-    const ev = (type, dx, dy, target) => (target || td).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, clientX: x + dx, clientY: y + dy }));
-    // a quick drag: that's selecting text, so the table doesn't move
-    ev('pointerdown', 0, 0); for (let i = 1; i <= 10; i++) ev('pointermove', -30 * i, 0); ev('pointerup', -300, 0);
-    const quick = wrap.scrollLeft;
-    // press and hold, then drag left and down: the table scrolls sideways, the page stays put
-    const pageTop = els.scroller.scrollTop;
-    ev('pointerdown', 0, 0); await wait(350);
-    const grabbing = document.body.classList.contains('table-grab');
-    for (let i = 1; i <= 10; i++) ev('pointermove', -30 * i, 8 * i); ev('pointerup', -300, 80);
-    const held = wrap.scrollLeft, pageMoved = els.scroller.scrollTop !== pageTop;
-    // a held drag that ends on a link doesn't open it
-    wrap.scrollLeft = 0; await wait(100);
-    ev('pointerdown', 0, 0); await wait(350); for (let i = 1; i <= 5; i++) ev('pointermove', -20 * i, 0); ev('pointerup', -100, 0, a);
-    a.click(); await wait(400);
-    return { tip: tip.startsWith('Tip: this table is wider'), quick: Math.round(quick), grabbing, held: Math.round(held), pageMoved,
-      stillHere: nav.stack[nav.idx].title, cleared: !document.body.classList.contains('table-grab') };
+    const tr = a.closest('tr'), wrap = tr.closest('.table-wrap'), box = wrap.parentElement;
+    await scrollTo(tr, 260); await wait(300);
+    floatBar.update();   // headless Edge doesn't run animation frames reliably, so update it directly
+    wrap.scrollBy = (o) => { wrap.scrollLeft += o.left; };   // ...nor smooth scrolling
+    const fbar = document.querySelector('.float-hbar');
+    const floatShown = !fbar.hidden;
+    const floatAboveAsk = floatShown && fbar.getBoundingClientRect().bottom <= $id('askBar').getBoundingClientRect().top;
+    tr.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    const right = box.querySelector('.tbl-arrow.r');
+    const nameLeft = tr.children[1].getBoundingClientRect().left;
+    right.click(); await wait(900);
+    const afterArrow = wrap.scrollLeft;
+    fbar.scrollLeft = 0; fbar.dispatchEvent(new Event('scroll')); await wait(200);
+    const viaFloat = wrap.scrollLeft;
+    wrap.scrollLeft = 400; wrap.dispatchEvent(new Event('scroll')); await wait(300);
+    return { box: box.classList.contains('table-box'), wide: box.classList.contains('wide'), floatShown, floatAboveAsk,
+      afterArrow: Math.round(afterArrow), viaFloat: Math.round(viaFloat), floatFollows: Math.round(fbar.scrollLeft) === Math.round(wrap.scrollLeft),
+      pinned: [...tr.children].slice(0, 3).map((c) => c.classList.contains('pin')),
+      nameStays: Math.abs(tr.children[1].getBoundingClientRect().left - nameLeft) <= 1,
+      leftFadeOff: getComputedStyle(wrap).maskImage === 'none' || getComputedStyle(wrap).webkitMaskImage === 'none' || !getComputedStyle(wrap).maskImage.includes('to left') };
   },
   async mixology() {   // Mastering Mixology rewards: 11 columns too wide for the page, with a Notes column of sentences
     await openPage('Mastering Mixology'); await wait(1500);

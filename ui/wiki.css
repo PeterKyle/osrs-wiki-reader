@@ -86,6 +86,9 @@
 .wiki .messagebox-text { color: var(--text-2); }
 
 /* tables: rounded card, hairline rows, tonal header, no grid */
+.wiki .table-box { position: relative; margin: .9em 0 1.4em; }
+.wiki .table-box.clear { clear: both; }
+.wiki .table-box > .table-wrap { margin: 0; }
 .wiki .table-wrap { overflow-x: auto; margin: .9em 0 1.4em; max-width: 100%; border-radius: var(--r-lg); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); background: var(--surface); }
 .wiki .table-wrap > table { margin: 0; width: 100%; }
 .wiki .table-wrap.clear { clear: both; }
@@ -93,8 +96,7 @@
 .wiki .table-wrap td img { max-width: none; }
 /* sentences in a table that scrolls sideways anyway: a readable width instead of a word per line (see tableEdges) */
 .wiki .table-wrap td.long-cell { min-width: 15em !important; }
-/* tables too wide to fit: press and hold, then drag sideways (app.js) */
-body.table-grab, body.table-grab * { cursor: grabbing !important; user-select: none !important; }
+
 .wiki .table-wrap td.longer-cell { min-width: 22em !important; }
 /* the wiki's per-column alignment classes (align-left-2, align-center-1...), as on the wiki */
 .wiki table.align-left-1 > * > tr > td:nth-child(1), .wiki table.align-left-2 > * > tr > td:nth-child(2), .wiki table.align-left-3 > * > tr > td:nth-child(3), .wiki table.align-left-4 > * > tr > td:nth-child(4), .wiki table.align-left-5 > * > tr > td:nth-child(5), .wiki table.align-left-6 > * > tr > td:nth-child(6), .wiki table.align-left-7 > * > tr > td:nth-child(7), .wiki table.align-left-8 > * > tr > td:nth-child(8), .wiki table.align-left-9 > * > tr > td:nth-child(9), .wiki table.align-left-10 > * > tr > td:nth-child(10), .wiki table.align-left-11 > * > tr > td:nth-child(11), .wiki table.align-left-12 > * > tr > td:nth-child(12), .wiki table.align-left-13 > * > tr > td:nth-child(13), .wiki table.align-left-14 > * > tr > td:nth-child(14), .wiki table.align-left-15 > * > tr > td:nth-child(15) { text-align: left; }
@@ -210,3 +212,36 @@ body.table-grab, body.table-grab * { cursor: grabbing !important; user-select: n
 /* strategy guides and quest item lists: things that are in your imported bank */
 .wiki table a.own { color: var(--success); }
 .wiki table a.own .ic { width: 12px; height: 12px; margin-left: 3px; vertical-align: -1px; stroke-width: 2.6; }
+
+/* wide tables: ‹ › arrows on hover (app.js places them at the middle of what you can see) */
+.wiki .tbl-arrow {
+  position: absolute; z-index: 3; top: var(--arrow-y, 50%); width: 34px; height: 34px; margin-top: -17px; padding: 0;
+  display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer; color: var(--text);
+  background: var(--glass-strong); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-md), inset 0 0 0 1px var(--line-strong);
+  opacity: 0; pointer-events: none; transform: scale(.9); transition: opacity var(--fast) var(--ease), transform var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+.wiki .tbl-arrow .ic { width: 16px; height: 16px; }
+.wiki .tbl-arrow.l { left: -12px; }
+.wiki .tbl-arrow.r { right: -12px; }
+.wiki .table-box.more-l:hover > .tbl-arrow.l, .wiki .table-box.more-r:hover > .tbl-arrow.r { opacity: 1; pointer-events: auto; transform: none; }
+.wiki .tbl-arrow:hover { background: var(--surface-3, var(--surface-2)); }
+.wiki .tbl-arrow:active { transform: scale(.94); }
+/* the first column stays put while the rest scrolls; no fade on that side, a soft shadow instead */
+.wiki .table-wrap.pinned .pin { position: sticky; z-index: 2; background-color: var(--surface); }
+.wiki .table-wrap.pinned th.pin { background-color: var(--surface-2); }
+.wiki .table-wrap.pinned tr:hover > td.pin { background-image: linear-gradient(var(--fill), var(--fill)); }
+.wiki .table-wrap.pinned .pin-edge { box-shadow: inset -1px 0 0 var(--line); }
+.wiki .table-wrap.pinned.more-l .pin-edge { box-shadow: inset -1px 0 0 var(--line-strong), 10px 0 12px -8px rgba(0, 0, 0, .5); }
+.wiki .table-wrap.pinned.more-l:not(.more-r) { -webkit-mask-image: none; mask-image: none; }
+.wiki .table-wrap.pinned.more-l.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+/* a scrollbar kept at the bottom of the window for the wide table on screen (app.js) */
+.float-hbar {
+  position: fixed; z-index: 56; height: 14px; overflow-x: auto; overflow-y: hidden; border-radius: 7px;
+  background: var(--glass-strong); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line);
+}
+.float-hbar > div { height: 1px; }
+.float-hbar::-webkit-scrollbar { height: 14px; }
+.float-hbar::-webkit-scrollbar-thumb { background: var(--text-3); border: 3px solid transparent; background-clip: padding-box; }
+.float-hbar::-webkit-scrollbar-thumb:hover { background: var(--text-2); background-clip: padding-box; }

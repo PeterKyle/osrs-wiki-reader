@@ -423,6 +423,7 @@ function updateDock() {
   document.body.classList.toggle('ask-bar-on', !askBar.hidden);
   const page = !els.article.hidden && nav.stack[nav.idx] && nav.stack[nav.idx].title;   // he's given the page you're on
   askBarInput.placeholder = page ? `Ask about ${page}…` : 'Ask the Wise Old Man…';
+  if (window.floatBar) floatBar.queue();   // the wide-table scrollbar sits just above the Ask box
 }
 const askBar = $('askBar');
 const askBarInput = $('askBarInput');

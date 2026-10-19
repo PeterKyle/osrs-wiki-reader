@@ -50,7 +50,7 @@ The Wise Old Man uses Google's Gemini with **your own free key**. It takes about
 
 ## What it does
 
-- **Wiki reader**: a calm, polished design with auto, dark and light themes, search with autocomplete, find on page (Ctrl+F), bookmarks, history. Tables shrink to fit narrow windows; tables wider than the page can be grabbed (press and hold, then drag sideways).
+- **Wiki reader**: a calm, polished design with auto, dark and light themes, search with autocomplete, find on page (Ctrl+F), bookmarks, history. Tables shrink to fit narrow windows; tables wider than the page get ‹ › arrows on hover, a scrollbar kept at the bottom of the window, and a first column that stays put while you scroll.
 - **Global hotkeys** you can set to any combination: show/hide (Ctrl+Alt+W) and open the Wise Old Man (Ctrl+Alt+Q), even in-game. Ctrl+N starts a new chat.
 - **Works like a normal Windows 11 window**: the Snap Layouts bar when you drag it to the top, edge and corner snapping, Snap Assist, Win+Arrow keys, and maximize (button or double-click the top bar). Plus a **pin** to keep it above the game and a **mini mode** search strip.
 - **Character tab**: look up any account's levels, boss kills and clues (official hiscores), weekly gains (Wise Old Man), and quests/diaries (WikiSync). Compare two accounts side by side. The profile is split into tabs (Overview, Progress, Bosses, Collection, Quests, Bank, Group) and remembers the one you used last.
