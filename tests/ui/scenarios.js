@@ -4,7 +4,7 @@
    JSON summary of what's on screen is written into document.title. tests/run_ui.py reads that title back
    (headless Edge --dump-dom) and compares it with the scenario's expected values.
 
-   Every summary has: mode, view (home|article|char|error), page (title bar text), askOpen, docked, errors
+   Every summary has: mode, view (home|article|char|error|web), page (title bar text), askOpen, docked, errors
    (uncaught errors / rejected promises / console.error messages), plus whatever the scenario returns.
 
    Add a scenario: add an async function here (return extra fields to report), then an entry in SCENARIOS
@@ -192,29 +192,23 @@ const S = {
     if (where) { where.click(); await wait(400); }
     return { hits, makeXp, makeProfit, where: ((els.article.querySelector('.where-info') || {}).textContent || '').trim() };
   },
-  async bestset() {   // the best setup from your bank on Vorkath: above the strategy guide's gear, which folds
-    state.me = 'Clyde Lives';
-    for (const m of ['save_account', 'set_me']) { const real = api[m]; api[m] = async (...a) => ({ ...(await real(...a)), me: 'Clyde Lives' }); }
-    try { localStorage.removeItem('bestsetOpts'); } catch (e) { /* */ }
-    window.__BANK = { 'Abyssal tentacle': 1, 'Dragon hunter crossbow': 1, "Ahrim's staff": 1 };
-    await openPage('Vorkath'); await wait(1500);
-    const box = els.article.querySelector('.bestset');
-    const wiki = els.article.querySelector('.gear:not(.bestset)');
-    const tabs = box ? [...box.querySelectorAll('.bs-tabs button')].map((b) => b.textContent.replace(/\s+/g, ' ').trim()) : [];
-    const first = box ? box.querySelector('.bs-tabs button.on').textContent.replace(/\s+/g, ' ').trim() : null;
-    const weapon = () => (box.querySelector('.bs-grid a[href*="weapon"], .bs-grid a') || {}).textContent;
-    box.querySelector('.bs-tabs button[data-i="2"]').click(); await wait(150);
-    const magicHow = box.querySelector('.bs-how').textContent.trim();
-    const shield = [...box.querySelectorAll('.bs-grid > span')].map((x) => x.textContent.trim());
-    const task = box.querySelector('.bs-chip input[data-k="task"]');
-    task.checked = true; task.dispatchEvent(new Event('change')); await wait(500);
-    const after = els.article.querySelector('.bestset');
-    return { shown: !!box, aboveWiki: !!(box && wiki && (box.compareDocumentPosition(wiki) & Node.DOCUMENT_POSITION_FOLLOWING)),
-      wikiFolded: wiki ? !wiki.open : null, tabs, first, magicHow, twoHanded: shield.includes('two-handed weapon'),
-      keptTab: after.querySelector('.bs-tabs button.on').textContent.replace(/\s+/g, ' ').trim(),
-      taskSaved: JSON.parse(localStorage.getItem('bestsetOpts') || '{}').task === true,
-      versions: after.querySelectorAll('.bs-ver option').length, single: els.article.querySelectorAll('.bestset').length,
-      hero: ((after.querySelector('.bs-hero') || {}).textContent || '').replace(/\s+/g, ' ').trim(), art: !!after.querySelector('.bs-art img') };
+  async gearscape() {   // monster pages: a card above the strategy guide's gear that opens Gearscape inside the reader
+    await openPage('Vorkath'); await wait(1200);
+    const card = els.article.querySelector('.gs-link');
+    const wiki = els.article.querySelector('.gear');
+    const out = { card: !!card, aboveWiki: !!(card && wiki && (card.compareDocumentPosition(wiki) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      wikiOpen: wiki ? wiki.open : null };
+    if (!card) return out;
+    card.click(); await wait(300);
+    const frame = els.web.querySelector('iframe');
+    Object.assign(out, { webView: !els.web.hidden, src: frame && frame.src, frameH: frame ? rect(frame).height : 0,
+      extOn: !els.ext.disabled, webTitle: els.pageTitle.textContent });
+    $id('btnBack').click(); await wait(600);
+    out.backTo = els.article.hidden ? null : nav.stack[nav.idx].title;
+    $id('btnFwd').click(); await wait(300);
+    out.sameFrame = els.web.querySelectorAll('iframe').length === 1 && !els.web.hidden;
+    $id('btnBack').click(); await wait(600);
+    return out;
   },
   async setprog() {
     state.me = 'Clyde Lives';
@@ -542,7 +536,7 @@ async function main() {
     try { extra = (await run()) || {}; } catch (e) { errors.push('scenario failed: ' + (e.stack || e)); }
   }
   await wait(200);
-  const view = ['home', 'article', 'char', 'error'].find((v) => !els[v].hidden) || null;
+  const view = ['home', 'article', 'char', 'error', 'web'].find((v) => !els[v].hidden) || null;
   document.title = JSON.stringify({ mode: MODE, view, page: els.pageTitle.textContent, askOpen: !chat.pop.hidden,
     docked: document.body.classList.contains('ask-docked'), width: window.innerWidth, ...extra, errors });
 }

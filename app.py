@@ -25,7 +25,6 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-import dps
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
@@ -34,7 +33,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.10.3"
+VERSION = "1.11.0"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -1025,7 +1024,6 @@ class Api:
         self._reqs = {}
         self._gear = {}
         self._item_pages = {}
-        self._monsters = {}
         self._titles = {}
         self._sources = {}
         self._bank_lock = threading.Lock()
@@ -2598,68 +2596,6 @@ class Api:
             return None
         logged = {item_key(n) for n in clog["items"]}
         return {n: item_key(n) in logged for n in (names or [])[:300] if isinstance(n, str)}
-
-    # ---- monster pages: the best setup you own (dps.py does the maths) ----
-    def _equipment(self):
-        def fetch():
-            rows, offset, fields = [], 0, ",".join(f"'{f}'" for f in dps.EQUIP_FIELDS)
-            while offset < 40000:   # pages of 5,000 (about 9,000 rows: items and their versions)
-                page = self._bucket(f"bucket('infobox_bonuses').select({fields}).limit(5000).offset({offset}).run()")
-                rows += page
-                if len(page) < 5000:
-                    break
-                offset += 5000
-            return dps.compact_equipment(rows)
-        return self._daily("equipment", fetch) or {}
-
-    def _monster_stats(self, title):
-        title = (title or "").strip()[:250]
-        with self._mem_lock:
-            hit = self._monsters.get(title)
-        if hit is not None:
-            return hit
-        esc = title.replace("\\", "\\\\").replace("'", "\\'")
-        fields = ",".join(f"'{f}'" for f in dps.MONSTER_FIELDS)
-        try:
-            out = dps.parse_monsters(self._bucket(f"bucket('infobox_monster').select({fields}).where('page_name','{esc}').limit(20).run()"))
-        except Exception:
-            return []
-        with self._mem_lock:
-            self._monsters[title] = out
-            if len(self._monsters) > 100:
-                self._monsters.pop(next(iter(self._monsters)))
-        return out
-
-    def best_setup(self, title, opts=None):
-        """On a monster page: the highest-damage gear in your bank for melee, ranged and magic, with your levels.
-        opts: version (which of the monster's versions), task, potions, prayers, rigour."""
-        b, me = self._my_bank(), self._cfg.get("me")
-        if not b or not me:
-            return None
-        versions = self._monster_stats(title)
-        if not versions:
-            return None
-        opts = opts if isinstance(opts, dict) else {}
-        try:
-            v = min(max(0, int(opts.get("version") or 0)), len(versions) - 1)
-        except (TypeError, ValueError):
-            v = 0
-        p = self.player(me)
-        if not p or p.get("error"):
-            return {"error": "Couldn't load your levels from the hiscores right now."}
-        equipment = self._equipment()
-        if not equipment:
-            return {"error": "Couldn't load the wiki's equipment stats right now."}
-        owned = dps.owned_items(list((b.get("items") or {}).keys()), equipment)
-        levels = {s["name"]: s["level"] for s in p.get("skills") or [] if s.get("level", -1) > 0}
-        quests = (p.get("sync") or {}).get("quests")
-        ctx = dps.make_context(levels, quests, owned, opts)
-        m = versions[v]
-        return {"monster": {k: m[k] for k in ("name", "version", "hp", "size", "slayer", "attrs", "weak", "weakpct",
-                                              "image", "combat", "attacks", "maxhit")},
-                "versions": [x["version"] or x["name"] for x in versions], "version": v,
-                "styles": dps.best_setups(owned, m, ctx), "opts": ctx["opts"], "updated": b.get("updated"),
-                "synced": quests is not None}
 
     def wiki_titles(self, names):
         """{name: page title} for the names that are wiki pages (redirects followed): lets the chat turn item names

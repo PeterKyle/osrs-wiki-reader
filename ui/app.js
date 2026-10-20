@@ -18,7 +18,7 @@ const QUICK = [
 
 const $ = (id) => document.getElementById(id);
 const els = {
-  scroller: $('scroller'), home: $('home'), article: $('article'), error: $('error'), errorMsg: $('errorMsg'), char: $('char'),
+  scroller: $('scroller'), home: $('home'), article: $('article'), error: $('error'), errorMsg: $('errorMsg'), char: $('char'), web: $('web'),
   search: $('search'), suggest: $('suggest'), progress: $('progress'), pageTitle: $('pageTitle'),
   back: $('btnBack'), fwd: $('btnFwd'), toc: $('btnToc'), ext: $('btnExt'), pin: $('btnPin'),
   tocPop: $('tocPop'), tocList: $('tocList'), setPop: $('setPop'),
@@ -26,7 +26,7 @@ const els = {
 
 let api = null;
 let state = {};
-const nav = { stack: [], idx: -1 };   // entries: { kind: 'home'|'page'|'char'|'compare', title, scroll }
+const nav = { stack: [], idx: -1 };   // entries: { kind: 'home'|'page'|'char'|'compare'|'web', title, scroll }
 let loadToken = 0;
 let lastFailed = null;
 
@@ -115,9 +115,11 @@ function show(which) {
   els.article.hidden = which !== 'article';
   els.error.hidden = which !== 'error';
   els.char.hidden = which !== 'char';
+  els.web.hidden = which !== 'web';
+  els.scroller.classList.toggle('on-web', which === 'web');   // the site scrolls itself
   const onArticle = which === 'article';
   els.toc.disabled = !onArticle;
-  els.ext.disabled = !onArticle;
+  els.ext.disabled = !onArticle && which !== 'web';
   $('btnChar').classList.toggle('on', which === 'char');
   if (window.trackMru) trackMru();   // Ctrl+Tab's recent list (switcher.js)
   if (window.updateBookmarkBtn) updateBookmarkBtn();
@@ -178,6 +180,7 @@ function navTo(i) {
   if (e.kind === 'home') goHome(false);
   else if (e.kind === 'char') openCharacter(e.title, { push: false, scroll: e.scroll });
   else if (e.kind === 'compare') openCompare(...e.title.split('\n'), { push: false, scroll: e.scroll });
+  else if (e.kind === 'web') openWeb(e.title, false);
   else openPage(e.title, { push: false, scroll: e.scroll });
 }
 
@@ -193,7 +196,33 @@ $('btnRandom').onclick = async () => {
 els.ext.onclick = () => {
   const e = nav.stack[nav.idx];
   if (e && e.kind === 'page') api.open_external(WIKI + '/w/' + encodeURIComponent(e.title.replace(/ /g, '_')));
+  if (e && e.kind === 'web') api.open_external(WEB_SITES[e.title].url);
 };
+
+// other sites shown inside the reader (Back returns to the wiki). A site's frame is made the first time it's
+// opened and then kept, so coming back is instant and keeps what you'd set up there.
+const WEB_SITES = {
+  gearscape: { url: 'https://www.gearscape.net/calculators/best', title: 'Gearscape best setup' },
+};
+function openWeb(key, push = true) {
+  const site = WEB_SITES[key];
+  if (!site) return;
+  if (push) pushEntry('web', key);
+  loadToken++;
+  setLoading(false);
+  closePops();
+  let frame = els.web.querySelector(`iframe[data-site="${key}"]`);
+  if (!frame) {
+    frame = document.createElement('iframe');
+    frame.dataset.site = key;
+    frame.title = site.title;
+    frame.src = site.url;
+    els.web.appendChild(frame);
+  }
+  els.web.querySelectorAll('iframe').forEach((f) => (f.hidden = f !== frame));
+  els.pageTitle.textContent = site.title;
+  show('web');
+}
 
 function setLoading(on) {
   els.progress.classList.toggle('on', on);
@@ -275,8 +304,7 @@ function renderArticle(res) {
   if (window.showMyKc) showMyKc(res.title);
   if (window.showCanDo) showCanDo(res.title);
   if (window.showGear) showGear(res.title);
-  // only pages with a monster infobox: no extra wiki request for every other page
-  if (window.showBestSetup && state.me && els.article.querySelector('.infobox-monster')) showBestSetup(res.title);
+  if (window.showGearscape && els.article.querySelector('.infobox-monster')) showGearscape();
   if (window.showInBank) showInBank(res.title);
   if (window.markOwnedLinks) markOwnedLinks(res.title);
   if (window.showSetProgress) showSetProgress(res.title);

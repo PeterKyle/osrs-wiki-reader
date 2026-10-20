@@ -419,7 +419,7 @@ function updateDock() {
   document.body.classList.toggle('ask-narrow', narrow);
   // while the chat is closed, an Ask box waits at the bottom of wiki pages (of every view, in a small window);
   // asking there opens the chat: beside the page when there's room, as a sheet when there isn't
-  askBar.hidden = isMini() || !chat.pop.hidden || !(narrow || !els.article.hidden);
+  askBar.hidden = isMini() || !chat.pop.hidden || !els.web.hidden || !(narrow || !els.article.hidden);   // never over another site
   document.body.classList.toggle('ask-bar-on', !askBar.hidden);
   const page = !els.article.hidden && nav.stack[nav.idx] && nav.stack[nav.idx].title;   // he's given the page you're on
   askBarInput.placeholder = page ? `Ask about ${page}…` : 'Ask the Wise Old Man…';

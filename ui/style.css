@@ -273,6 +273,11 @@ select { height: 32px; padding: 0 10px; font-size: var(--fs-sm); }
 .scroller { position: absolute; inset: 0; overflow: auto; padding-top: var(--chrome-h); scroll-padding-top: calc(var(--chrome-h) + 12px); }
 .scroller > * { transition: opacity var(--med) var(--ease); }
 .scroller.loading > * { opacity: .5; }
+/* another site inside the reader (Gearscape): fills the space below the toolbar and scrolls itself */
+.scroller.on-web { overflow: hidden; }
+.web { height: 100%; }
+.web iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--bg); }
+.web iframe[hidden] { display: none; }
 
 /* ---------------- home ---------------- */
 
