@@ -245,3 +245,75 @@
 .float-hbar::-webkit-scrollbar { height: 14px; }
 .float-hbar::-webkit-scrollbar-thumb { background: var(--text-3); border: 3px solid transparent; background-clip: padding-box; }
 .float-hbar::-webkit-scrollbar-thumb:hover { background: var(--text-2); background-clip: padding-box; }
+
+/* tab groups (strategy guides' gear setups): buttons made by setupTabbers in app.js, one panel at a time */
+.wiki .tabber { margin: 1em 0 1.2em; }
+.wiki .tabber-nav { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 10px; }
+.wiki .tabber-nav button {
+  font: 500 13px var(--font); color: var(--text-2); background: var(--fill); border: 0; cursor: pointer;
+  padding: 7px 14px; border-radius: var(--r-md) var(--r-md) 0 0; box-shadow: inset 0 0 0 1px var(--line);
+  transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+.wiki .tabber-nav button:hover { color: var(--text); }
+.wiki .tabber-nav button.on { color: var(--text); background: var(--surface); box-shadow: inset 1px 1px 0 var(--line), inset -1px 0 0 var(--line); }
+.wiki .tabbertab {
+  display: flow-root; padding: 12px 18px; background: var(--surface); border-radius: var(--r-lg);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.wiki .tabbertab[hidden] { display: none; }
+.wiki .tabbertab > .mw-empty-elt:first-child { display: none; }
+
+/* the game's worn equipment, inventory and rune pouch screens (the wiki's own look and pictures) */
+@font-face { font-family: 'RuneScape Small'; src: local("RuneScape Plain 12"), url(https://oldschool.runescape.wiki/images/RuneScape_Small.woff2) format('woff2'); }
+.wiki .equipment, .wiki .inventorytable, .wiki .runepouchtable { image-rendering: pixelated; }
+/* icons at their own size, as in the game (the cells are tighter than the pictures: the rune pouch's middle rune) */
+.wiki .equipment img, .wiki .inventorytable img, .wiki .runepouchtable img { max-width: none; }
+.wiki .equipment-right, .wiki .storage-right { margin: 7px 0 7px 0; }
+.wiki .equipment-left, .wiki .storage-left { margin: 7px 0; }
+@container (min-width: 560px) {
+  .wiki .equipment-right, .wiki .storage-right { float: right; clear: right; margin-left: 14px; }
+  .wiki .equipment-left, .wiki .storage-left { float: left; clear: left; margin-right: 14px; }
+}
+.wiki table.equipment {
+  width: auto; background: #3e3529; border: 9px solid transparent; border-collapse: separate;
+  border-image: url(https://oldschool.runescape.wiki/images/Interface_border.png) 9 / 9px / 0 repeat;
+  padding: 0 2px 0 3px; border-radius: 4px;
+}
+.wiki table.equipment td { padding: 0; border: 0; }
+.wiki .equipment-div {
+  position: relative; display: flex; width: 175px; height: 222px; margin: 15px 0 14px;
+  background: url(https://oldschool.runescape.wiki/images/Worn_equipment_tab_%28no_buttons%29.png) no-repeat top left;
+}
+.wiki .equipment-div > div { position: absolute; display: flex; justify-content: center; align-items: center; width: 36px; height: 36px; }
+.wiki .equipment-blank { background: url(https://oldschool.runescape.wiki/images/Blank_slot.png) no-repeat; }
+.wiki .equipment-plinkp { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; }
+.wiki .equipment-head { left: 70px; top: 0; }
+.wiki .equipment-cape { left: 29px; top: 39px; }
+.wiki .equipment-neck { left: 70px; top: 39px; }
+.wiki .equipment-ammo { left: 111px; top: 39px; }
+.wiki .equipment-ammo2 { left: 111px; top: 0; }
+.wiki .equipment-weapon { left: 14px; top: 78px; }
+.wiki .equipment-torso { left: 70px; top: 78px; }
+.wiki .equipment-shield { left: 126px; top: 78px; }
+.wiki .equipment-legs { left: 70px; top: 118px; }
+.wiki .equipment-gloves { left: 14px; top: 158px; }
+.wiki .equipment-boots { left: 70px; top: 158px; }
+.wiki .equipment-ring { left: 126px; top: 158px; }
+.wiki .inventorytable, .wiki .runepouchtable { border-collapse: separate; border-spacing: 0; background-repeat: no-repeat; background-position: top left; }
+.wiki .inventorytable { width: 204px; padding: 13px 16px 10px; background-image: url(https://oldschool.runescape.wiki/images/Inventory_tab.png); }
+.wiki .inventorytable td { width: 43px; height: 36px; }
+.wiki .runepouchtable { width: 158px; padding: 24px 7px 6px; background-image: url(https://oldschool.runescape.wiki/images/Rune_pouch_background.png); }
+.wiki .runepouchtable.storage-right { margin-right: 23px; }
+.wiki .runepouchtable.storage-left { margin-left: 23px; }
+.wiki .runepouchtable td { width: 32px; height: 32px; line-height: 1.6em; }
+.wiki .runepouchtable td.middle-rune { padding-left: 24px; padding-right: 24px; }
+.wiki .inventorytable td, .wiki .runepouchtable td { padding: 0; border: 0; text-align: center; vertical-align: middle; position: relative; }
+.wiki .inv-quantity-text {
+  position: absolute; top: -8px; left: 4px; font: 12pt 'RuneScape Small', var(--font); color: #ff0;
+  text-shadow: #000 1px 1px; pointer-events: none;
+}
+.wiki .equipment .inv-quantity-text { top: -3px; }
+.wiki .runepouchtable .inv-quantity-text { left: -1px; }
+.wiki .runepouchtable td.middle-rune .inv-quantity-text { left: 23px; }
+.wiki .inv-quantity-text.qty-100k { color: #fff; }
+.wiki .inv-quantity-text.qty-10m { color: #01ff80; }

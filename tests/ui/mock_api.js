@@ -105,6 +105,9 @@ const API = {
     return Object.fromEntries(names.map((n) => [n, count(n)]));
   },
   bank_value: async () => (window.__BANK ? clone(window.__PROFILE.bankValue) : { imported: false }),
+  // the Gearscape frame's helper needs the real WebView2 (checked by hand), so the harness has none
+  web_bridge: async () => false,
+  bank_export: async () => null,
   gear_upgrades: async (t) => (window.__BANK ? clone(((window.__PROFILE.upgrades || {})[t]) || null) : null),
   clipboard_text: async () => window.__CLIP || '',
   bank_items: async () => (window.__BANK ? Object.entries(window.__BANK).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty) : null),

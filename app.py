@@ -33,7 +33,7 @@ import webview
 from notifier import Notifier
 
 APP_NAME = "OSRS Wiki Reader"
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 # Who the wiki admins should contact if this app ever misbehaves.
 CONTACT = "Discord: relay"
 USER_AGENT = f"OSRSWikiReader/{VERSION} (unofficial desktop reader; {CONTACT})"
@@ -1026,6 +1026,7 @@ class Api:
         self._item_pages = {}
         self._titles = {}
         self._sources = {}
+        self._bridge = False
         self._bank_lock = threading.Lock()
         self._bank_cache = None
 
@@ -2484,6 +2485,39 @@ class Api:
         if not b:
             return None
         return sorted(({"name": k, "qty": v} for k, v in (b.get("items") or {}).items()), key=lambda x: -x["qty"])
+
+    def bank_export(self):
+        """Your bank in Bank Memory's format ("Item id, Item name, Item quantity"), for Gearscape's import."""
+        b = self._my_bank()
+        if not b:
+            return None
+        ids, items = b.get("ids") or {}, b.get("items") or {}
+        try:
+            known = self._items() if len(ids) < len(items) else {}   # older imports without ids
+        except Exception:
+            known = {}
+        lines = ["Item id\tItem name\tItem quantity"]
+        for name, qty in items.items():
+            item_id = ids.get(name) or (known.get(name.lower()) or {}).get("id") or 0
+            lines.append(f"{int(item_id)}\t{name}\t{max(0, int(qty))}")
+        return {"text": "\n".join(lines), "updated": b.get("updated")}
+
+    def web_bridge(self):
+        """Puts ui/gearscape-bridge.js in place (once): WebView2 runs it in every document, including the Gearscape
+        frame, where it hands your bank to Gearscape's own import. True when it's ready."""
+        if self._bridge:
+            return True
+        try:
+            from System import Action
+            wv = self._window.native.browser.webview
+            with open(resource_path("ui", "gearscape-bridge.js"), encoding="utf-8") as f:
+                script = f.read()
+            started = {}
+            wv.Invoke(Action(lambda: started.update(task=wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(script))))
+            self._bridge = bool(started["task"].Wait(5000))   # waited for here, off the UI thread
+        except Exception:
+            self._bridge = False
+        return self._bridge
 
     def item_sources(self, name):
         """Where an item comes from: best drop rates, shops, how it's made, and the quest it's tied to."""

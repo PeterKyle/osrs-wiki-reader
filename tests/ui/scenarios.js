@@ -40,6 +40,22 @@ const S = {
     return { heading: (els.article.querySelector('.page-heading') || {}).textContent, infobox: !!els.article.querySelector('.infobox'),
       tables: els.article.querySelectorAll('.table-wrap').length };
   },
+  async tabber() {   // a wiki tab group (Vorkath/Strategies' gear setups): tab buttons, one panel at a time
+    await openPage('Vorkath tabs'); await wait(800);
+    const t = els.article.querySelector('.tabber');
+    const tabs = [...t.querySelectorAll('.tabber-nav button')];
+    const shown = () => [...t.querySelectorAll(':scope > .tabbertab')].filter((x) => !x.hidden).map((x) => x.dataset.title);
+    const first = shown();
+    tabs[2].click(); await wait(200);
+    const third = shown();
+    tabs[0].click(); await wait(200);
+    const eq = t.querySelector('.equipment-div'), head = t.querySelector('.equipment-head'), ring = t.querySelector('.equipment-ring');
+    const pouch = t.querySelector('.runepouchtable');
+    if (QS.get('scroll')) await scrollTo(pouch, +QS.get('scroll'));
+    return { tabs: tabs.map((b) => b.textContent), first, third, on: tabs.findIndex((b) => b.classList.contains('on')),
+      eqW: eq ? rect(eq).width : 0, slotsPlaced: !!(head && ring && ring.getBoundingClientRect().top - head.getBoundingClientRect().top > 100),
+      floated: getComputedStyle(t.querySelector('.equipment')).float, pouchRunes: pouch ? pouch.querySelectorAll('img').length : 0 };
+  },
   async table() {
     await openPage(QS.get('p') || 'Optimal quest guide'); await wait(500);
     if (!QS.get('nochat')) await openChat();

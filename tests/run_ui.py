@@ -46,6 +46,13 @@ SCENARIOS = [
     dict(name="home_light", mode="home", size=(1100, 900), params={"theme": "light"}, expect={"view": "home"}),
     dict(name="article", mode="article", size=(1100, 900),
          expect={"view": "article", "page": "Abyssal whip", "heading": "Abyssal whip", "infobox": True, "tables": at_least(1)}),
+    # wiki tab groups (strategy guides): tab buttons, one panel at a time; equipment / inventory / rune pouch drawn like the game
+    dict(name="tabber", mode="tabber", size=(1100, 900),
+         expect={"tabs": ["Ranged (crossbow)", "Ranged (blowpipe)", "Melee"], "first": ["Ranged (crossbow)"], "third": ["Melee"],
+                 "on": 0, "eqW": 175, "slotsPlaced": True, "floated": "right", "pouchRunes": 3}),
+    dict(name="tabber_pouch", mode="tabber", size=(1100, 900), params={"scroll": 300}, expect={"pouchRunes": 3}),
+    dict(name="tabber_narrow", mode="tabber", size=(520, 900), expect={"floated": "none", "slotsPlaced": True}),
+    dict(name="tabber_light", mode="tabber", size=(1100, 900), params={"theme": "light"}, expect={"on": 0}),
     dict(name="settings", mode="settings", size=(1100, 900),
          expect={"settingsOpen": True, "hkRow": True, "hkAskRow": True, "hk": "Ctrl + Alt + W", "hkAsk": "Ctrl + Alt + Q"}),
     dict(name="hotkey", mode="hotkey", size=(1100, 900), expect={"hk": "Ctrl + Alt + K"}),

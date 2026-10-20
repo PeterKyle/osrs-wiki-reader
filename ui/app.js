@@ -201,10 +201,11 @@ els.ext.onclick = () => {
 
 // other sites shown inside the reader (Back returns to the wiki). A site's frame is made the first time it's
 // opened and then kept, so coming back is instant and keeps what you'd set up there.
+// bank: the site gets your imported bank through ui/gearscape-bridge.js
 const WEB_SITES = {
-  gearscape: { url: 'https://www.gearscape.net/calculators/best', title: 'Gearscape best setup' },
+  gearscape: { url: 'https://www.gearscape.net/calculators/best', title: 'Gearscape best setup', bank: true },
 };
-function openWeb(key, push = true) {
+async function openWeb(key, push = true) {
   const site = WEB_SITES[key];
   if (!site) return;
   if (push) pushEntry('web', key);
@@ -216,13 +217,35 @@ function openWeb(key, push = true) {
     frame = document.createElement('iframe');
     frame.dataset.site = key;
     frame.title = site.title;
-    frame.src = site.url;
     els.web.appendChild(frame);
-  }
+    // the helper goes in before the site loads, so it runs there; no helper, no bank (Gearscape's own import still works)
+    if (site.bank && (await api.web_bridge())) {
+      frame.onload = () => { if (!frame.getAttribute('src')) return; frame.dataset.loaded = '1'; sendBank(frame); };
+    }
+    frame.src = site.url;
+  } else if (site.bank && frame.dataset.loaded) sendBank(frame);   // re-imported your bank since? send the new one
   els.web.querySelectorAll('iframe').forEach((f) => (f.hidden = f !== frame));
   els.pageTitle.textContent = site.title;
   show('web');
 }
+
+const BANK_SENT_KEY = 'gsBankSynced';   // remembers that Gearscape was set to "only include" once
+async function sendBank(frame) {
+  const b = state.me ? await api.bank_export() : null;
+  if (!b || String(b.updated) === frame.dataset.bankSent) return;
+  frame.dataset.bankSent = String(b.updated);
+  let first = true;
+  try { first = !localStorage.getItem(BANK_SENT_KEY); } catch (e) { /* private window */ }
+  frame.contentWindow.postMessage({ osrsReader: 'bank', text: b.text, first }, 'https://www.gearscape.net');
+}
+window.addEventListener('message', (e) => {
+  const frame = els.web.querySelector('iframe[data-site="gearscape"]');
+  if (!frame || e.source !== frame.contentWindow || e.origin !== 'https://www.gearscape.net' || !e.data || e.data.osrsReader !== true) return;
+  if (e.data.type !== 'bank-done') return;
+  if (!e.data.ok) { delete frame.dataset.bankSent; toast("Couldn't give Gearscape your bank. Use its RuneLite import instead."); return; }
+  try { localStorage.setItem(BANK_SENT_KEY, '1'); } catch (err) { /* private window */ }
+  toast(`Gearscape is using your bank: ${e.data.gear} gear items, ${e.data.boosts} potions`);
+});
 
 function setLoading(on) {
   els.progress.classList.toggle('on', on);
@@ -294,6 +317,7 @@ function renderArticle(res) {
   setupSortable(a);
   setupCollapsible(a);
   setupInfoboxSwitch(a);
+  setupTabbers(a);
 
   els.pageTitle.textContent = res.title;
   buildToc();
@@ -587,6 +611,34 @@ function setupInfoboxSwitch(root) {
     };
     buttons.forEach((b) => b.addEventListener('click', () => select(b)));
     buttons[0].classList.add('selected');
+  });
+}
+
+// tab groups (strategy guides' gear setups...): the wiki builds the tab buttons with its own script, so the page
+// only has the panels (div.tabbertab with data-title). Buttons on top, one panel showing at a time.
+function setupTabbers(root) {
+  root.querySelectorAll('div.tabber').forEach((tabber) => {
+    const panels = [...tabber.children].filter((c) => c.classList.contains('tabbertab'));
+    if (!panels.length || tabber.querySelector(':scope > .tabber-nav')) return;
+    const nav = document.createElement('div');
+    nav.className = 'tabber-nav';
+    nav.setAttribute('role', 'tablist');
+    const pick = (i) => {
+      panels.forEach((p, j) => (p.hidden = j !== i));
+      [...nav.children].forEach((b, j) => { b.classList.toggle('on', j === i); b.setAttribute('aria-selected', j === i); });
+      panels[i].querySelectorAll('.table-wrap').forEach((w) => { tableLayout(w); tableEdges(w); });   // sized while hidden
+      if (window.floatBar) floatBar.queue();
+    };
+    panels.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('role', 'tab');
+      b.textContent = p.dataset.title || `Tab ${i + 1}`;
+      b.onclick = () => pick(i);
+      nav.appendChild(b);
+    });
+    tabber.prepend(nav);
+    pick(0);
   });
 }
 
