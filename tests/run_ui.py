@@ -78,7 +78,8 @@ SCENARIOS = [
     dict(name="table", mode="table", size=(1118, 1000),
          expect={"view": "article", "page": "Optimal quest guide", "docked": True, "compact": True}),
     dict(name="table_wide", mode="table", size=(1500, 1000), params={"nochat": 1},
-         expect={"docked": False, "compact": False}),
+         expect={"docked": False, "compact": False, "bleed": True,
+                 "tableWidth": lambda v, r: v > r["colW"] + 300}),   # wider than the text column, nearly the whole page
     # chat history: two questions, Ctrl+N (fresh chat with the greeting), a third question, then the history menu
     dict(name="hist_menu", mode="hist", size=(1500, 1000), params={"menu": 1},
          expect={"afterNew": starts("Greetings"), "items": 2, "menuOpen": True,

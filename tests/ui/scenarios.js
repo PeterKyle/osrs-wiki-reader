@@ -63,7 +63,8 @@ const S = {
     await scrollTo(wrap, 120);
     const cell = wrap.querySelector('td');
     return { tableWidth: wrap.clientWidth, tableScroll: wrap.scrollWidth, cellPad: getComputedStyle(cell).paddingLeft,
-      compact: getComputedStyle(cell).paddingLeft === '8px', fadeRight: wrap.classList.contains('more-r'), pageRight: rect(els.scroller).right };
+      compact: getComputedStyle(cell).paddingLeft === '8px', fadeRight: wrap.classList.contains('more-r'), pageRight: rect(els.scroller).right,
+      bleed: wrap.parentElement.classList.contains('bleed'), colW: Math.round(pageWidths.col) };
   },
   // the extra profile sections, with real data for Clyde Lives
   async tabs() {   // the profile in tabs: which tabs show, switching, the bar staying in view, the last tab remembered

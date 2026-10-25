@@ -92,6 +92,13 @@
 .wiki .table-wrap { overflow-x: auto; margin: .9em 0 1.4em; max-width: 100%; border-radius: var(--r-lg); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); background: var(--surface); }
 .wiki .table-wrap > table { margin: 0; width: 100%; }
 .wiki .table-wrap.clear { clear: both; }
+/* tables in the text column leave it when they need more room: as wide as they need, up to almost the whole page
+   (--page-w and --col-w from app.js), centred on it. Ones that fit stay the column's width. */
+.wiki .table-box.bleed {
+  --bleed-w: max(100%, calc(var(--page-w, 100%) - 48px));
+  clear: both; width: var(--bleed-w); margin-left: calc(50% - var(--bleed-w) / 2); margin-right: calc(50% - var(--bleed-w) / 2);
+}
+.wiki .table-box.bleed > .table-wrap { width: max-content; min-width: var(--col-w, 100%); max-width: 100%; margin-inline: auto; }
 /* pictures keep their size in tables: shrinking them to the cell let a squeezed table collapse picture columns to nothing */
 .wiki .table-wrap td img { max-width: none; }
 /* sentences in a table that scrolls sideways anyway: a readable width instead of a word per line (see tableEdges) */

@@ -349,6 +349,7 @@ function wrapTables(root) {
     w.addEventListener('scroll', () => { tableEdges(w); if (floatBar.w === w) floatBar.sync(); }, { passive: true });
   });
   requestAnimationFrame(() => {
+    pageWidths();
     root.querySelectorAll('.table-wrap').forEach((w) => { tableLayout(w); tableEdges(w); });
     floatBar.update();
   });
@@ -368,6 +369,16 @@ function tableArrow(side) {
   return b;
 }
 
+// The page's and the text column's widths, for tables that grow past the column (.table-box.bleed)
+function pageWidths() {
+  const a = els.article;
+  if (a.hidden) return;
+  const s = getComputedStyle(a);
+  pageWidths.col = a.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+  a.style.setProperty('--page-w', els.scroller.clientWidth + 'px');
+  a.style.setProperty('--col-w', pageWidths.col + 'px');
+}
+
 // Layout fixes that depend on the table's width (run when it's shown and when the page column resizes)
 function tableLayout(w) {
   const box = w.parentElement.classList.contains('table-box') ? w.parentElement : w;
@@ -376,6 +387,12 @@ function tableLayout(w) {
   const room = box.parentElement.clientWidth;
   if (!box.classList.contains('clear') && w.clientWidth < room - 40 && (w.scrollWidth > w.clientWidth + 1 || w.clientWidth < room * 0.6)) {
     box.classList.add('clear');
+  }
+  // A table across the text column (not beside a float, not inside a tab panel or list) may grow past the column,
+  // up to almost the whole page, before it has to scroll (see .table-box.bleed)
+  if (box !== w && !box.classList.contains('bleed') && pageWidths.col && Math.abs(box.clientWidth - pageWidths.col) <= 1
+      && w.offsetWidth >= box.clientWidth - 1 && els.article.contains(box)) {
+    box.classList.add('bleed');
   }
   // Too wide to fit at all: the browser then shrinks every column to its narrowest, so a column of sentences
   // (notes, descriptions) ends up a word wide and every row very tall. It scrolls sideways anyway, so give those
@@ -513,11 +530,14 @@ const floatBar = (() => {
 })();
 window.floatBar = floatBar;
 
-// the page column changes width with the window and the docked chat
-new ResizeObserver(() => {
+// the page column changes width with the window and the docked chat (the page also past the column's max width)
+const pageResize = new ResizeObserver(() => {
+  pageWidths();
   els.article.querySelectorAll('.table-wrap').forEach((w) => { tableLayout(w); tableEdges(w); });
   floatBar.queue();
-}).observe(els.article);
+});
+pageResize.observe(els.article);
+pageResize.observe(els.scroller);
 
 function cellValue(cell) {
   if (!cell) return '';
