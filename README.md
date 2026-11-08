@@ -61,6 +61,7 @@ The Wise Old Man uses Google's Gemini with **your own free key**. It takes about
   - Combat achievements: points, the reward tier you've unlocked, how far to the next, and progress per tier (needs WikiSync).
   - **Share**: a picture of your profile to paste into Discord.
 - **Collection log** (via WikiSync: open your collection log in game and press its **WikiSync** button): your progress and pets on the profile, ticks for the pets you have, "logged" on boss drops with how lucky or dry you are, and "In your collection log" on item pages. The Wise Old Man knows what you've already got.
+- **Your combat achievements on wiki pages** (via WikiSync): combat achievement tables on boss and tier pages tick off the tasks you've done, with how many tasks and points you have there.
 - **Your kill count on boss pages**: open a boss, clue or minigame page and it shows your KC, rank and this week's kills, plus your pet luck (how many players would have the pet by your kill count) and the collection log drops you'd expect by now.
 - **Recommended gear on boss pages**: the best and budget pick for every slot, per combat style, from the wiki's strategy guides.
 - **Best setup calculator**: monster pages have a button that opens [Gearscape](https://www.gearscape.net/calculators/best)'s best setup calculator inside the reader. Back returns to the wiki, and it keeps what you set up there while the app is open. With your bank imported, Gearscape gets it automatically (through its own RuneLite Bank Memory import), so its setups use the gear you own.

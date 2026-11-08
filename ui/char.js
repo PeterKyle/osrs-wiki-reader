@@ -442,11 +442,55 @@ function markDiaries(p) {
   });
 }
 
+// combat achievement task tables (boss pages, tier pages, the full task list): each row is <tr data-ca-task-id>
+function markCombatAchievements(p) {
+  const tables = [...new Set([...els.article.querySelectorAll('tr[data-ca-task-id]')].map((r) => r.closest('table')))];
+  if (!tables.length) return;
+  const ids = p.sync && p.sync.combatAchievements;
+  tables.forEach((table) => {
+    const place = (note) => (table.closest('.table-box') || table.closest('.table-wrap') || table).before(note);
+    if (!ids) {
+      const note = document.createElement('div');
+      note.className = 'qc-banner diary-note todo';
+      note.innerHTML = `<span>See which of these tasks you've done with the <a href="${wikiHref('RuneScape:WikiSync')}">WikiSync</a> RuneLite plugin.</span>`;
+      place(note);
+      return;
+    }
+    const done = new Set(ids.map(String));
+    const rows = [...table.querySelectorAll('tr[data-ca-task-id]')];
+    let n = 0, pts = 0, ptsAll = 0;
+    rows.forEach((row) => {
+      const ok = done.has(row.dataset.caTaskId);
+      const tierCell = row.querySelector('td[data-sort-value]');   // the tier's sort value is its points (Easy 1 … Grandmaster 6)
+      const p1 = tierCell ? parseInt(tierCell.dataset.sortValue, 10) || 0 : 0;
+      ptsAll += p1;
+      if (ok) { n++; pts += p1; }
+      row.classList.add(ok ? 'diary-done' : 'diary-todo');
+      const cell = row.cells[0];
+      if (cell && !cell.querySelector('.qc-mark')) {
+        const s = document.createElement('span');
+        s.className = 'qc-mark qc-' + (ok ? 'yes' : 'no');
+        s.title = ok ? 'Task completed' : 'Not completed yet';
+        s.innerHTML = svgIcon(ok ? 'i-check' : 'i-x');
+        cell.prepend(s);
+      }
+    });
+    const all = n === rows.length;
+    const note = document.createElement('div');
+    note.className = 'qc-banner diary-note ' + (all ? 'good' : 'todo');
+    note.innerHTML = `<span class="qc-icon">${svgIcon(all ? 'i-check' : 'i-list')}</span>
+      <span><b>${escapeHtml(p.name)}</b>: ${n}/${rows.length} combat achievements done` +
+      (ptsAll ? ` · ${pts}/${ptsAll} points` : '') + `${all ? ' · all complete' : ''}</span>`;
+    place(note);
+  });
+}
+
 window.checkRequirements = async function (pageTitle) {
   const zones = [...els.article.querySelectorAll('.qc-active')];
   const isQuest = !!els.article.querySelector('table.questdetails');
   const hasScp = !!els.article.querySelector('.scp[data-skill][data-level], [data-skill][data-skill-level]');
-  if (!zones.length && !hasScp) return;
+  const hasCa = !!els.article.querySelector('tr[data-ca-task-id]');
+  if (!zones.length && !hasScp && !hasCa) return;
 
   let banner = null;
   if (isQuest && zones.length) {
@@ -490,6 +534,7 @@ window.checkRequirements = async function (pageTitle) {
     markSkill(el, el.dataset.skill, parseInt(el.dataset.skillLevel, 10), levels);
   });
   markDiaries(p);
+  markCombatAchievements(p);
   if (!banner) return;
 
   zones.forEach((zone) => {
